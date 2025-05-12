@@ -1,6 +1,9 @@
 package earthfile
 
-import "github.com/earthly/earthly/ast/spec"
+import (
+	"github.com/earthly/earthly/ast/spec"
+	"github.com/iancoleman/strcase"
+)
 
 type ArgOpt struct {
 	Required bool
@@ -26,13 +29,6 @@ func (t *Target) Output() (string, bool) {
 	return "", false
 }
 
-func parseTargets(asts []spec.Target) (targets []*Target) {
-	for _, ast := range asts {
-		targets = append(targets, parseTarget(ast))
-	}
-	return
-}
-
 func parseTarget(ast spec.Target) *Target {
 	target := &Target{
 		Name: ast.Name,
@@ -54,4 +50,15 @@ func parseTarget(ast spec.Target) *Target {
 		}
 	}
 	return target
+}
+
+type TargetsMap map[string]*Target
+
+func parseTargetsMap(asts []spec.Target) (targets TargetsMap) {
+	targets = make(TargetsMap)
+	for _, ast := range asts {
+		target := parseTarget(ast)
+		targets[strcase.ToCamel(target.Name)] = target
+	}
+	return
 }

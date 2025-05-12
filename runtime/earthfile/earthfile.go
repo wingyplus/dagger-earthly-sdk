@@ -13,7 +13,7 @@ import (
 type Earthfile struct {
 	Ast        spec.Earthfile
 	ModuleName string
-	Targets    []*Target
+	Targets    TargetsMap
 }
 
 // Initiate Earthfile from path.
@@ -25,7 +25,7 @@ func New(ctx context.Context, path string, modname string) (*Earthfile, error) {
 	return &Earthfile{
 		Ast:        ast,
 		ModuleName: modname,
-		Targets:    parseTargets(ast.Targets),
+		Targets:    parseTargetsMap(ast.Targets),
 	}, nil
 }
 
@@ -60,4 +60,8 @@ func (ef *Earthfile) ToModule() *dagger.Module {
 	}
 
 	return dag.Module().WithObject(module)
+}
+
+func (ef *Earthfile) TargetFromFunctionName(name string) *Target {
+	return ef.Targets[name]
 }

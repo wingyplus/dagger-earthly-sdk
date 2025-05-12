@@ -11,6 +11,7 @@ import (
 	"dagger.io/dagger/dag"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthfile"
+	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthly"
 	"golang.org/x/net/context"
 )
 
@@ -52,6 +53,9 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, par
 	switch parentName {
 	case "":
 		return ef.ToModule(), nil
+	case ef.ModuleName:
+		target := ef.TargetFromFunctionName(fnName)
+		return earthly.Invoke(target)
 	default:
 		panic("unreachable")
 	}
