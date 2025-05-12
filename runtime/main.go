@@ -53,7 +53,7 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, par
 	case "":
 		return ef.ToModule(), nil
 	default:
-		panic("not reachable")
+		panic("unreachable")
 	}
 }
 
