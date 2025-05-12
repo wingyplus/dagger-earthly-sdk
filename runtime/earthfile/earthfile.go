@@ -33,7 +33,8 @@ func (ef *Earthfile) ToModule() *dagger.Module {
 	module := dag.TypeDef().WithObject(ef.ModuleName)
 
 	for _, target := range ef.Ast.Targets {
-		fn := dag.Function(strcase.ToCamel(target.Name), dag.TypeDef().WithObject("Container"))
+		// TODO: default to void unless the target declare the `SAVE IMAGE` statement.
+		fn := dag.Function(strcase.ToCamel(target.Name), dag.TypeDef().WithKind(dagger.TypeDefKindVoidKind))
 		for _, statement := range target.Recipe {
 			cmd := statement.Command
 			if cmd.Name == "ARG" {
