@@ -13,6 +13,7 @@ import (
 type Earthfile struct {
 	Ast        spec.Earthfile
 	ModuleName string
+	Targets    []*Target
 }
 
 // Initiate Earthfile from path.
@@ -24,6 +25,7 @@ func New(ctx context.Context, path string, modname string) (*Earthfile, error) {
 	return &Earthfile{
 		Ast:        ast,
 		ModuleName: modname,
+		Targets:    parseTargets(ast.Targets),
 	}, nil
 }
 
@@ -32,33 +34,29 @@ func (ef *Earthfile) ToModule() *dagger.Module {
 	// TODO: sourcemap.
 	module := dag.TypeDef().WithObject(ef.ModuleName)
 
-	for _, target := range ef.Ast.Targets {
-		// TODO: default to void unless the target declare the `SAVE IMAGE` statement.
-		fn := dag.Function(strcase.ToCamel(target.Name), dag.TypeDef().WithKind(dagger.TypeDefKindVoidKind))
-		for _, statement := range target.Recipe {
-			cmd := statement.Command
-			if cmd.Name == "ARG" {
-				name := cmd.Args[0]
-				required := false
-				if cmd.Args[0] == "--required" {
-					name = cmd.Args[1]
-					required = true
-				}
-
-				kind := dag.TypeDef().WithKind(dagger.TypeDefKindStringKind)
-				if !required {
-					kind = kind.WithOptional(true)
-				}
-
-				fn = fn.WithArg(
-					strcase.ToLowerCamel(name),
-					kind,
-					dagger.FunctionWithArgOpts{Description: cmd.Docs},
-				)
-			}
+	for _, target := range ef.Targets {
+		returnTypeKind := dag.TypeDef().WithKind(dagger.TypeDefKindVoidKind)
+		_, hasOutput := target.Output()
+		if hasOutput {
+			returnTypeKind = dag.TypeDef().WithObject("Container")
 		}
 
-		module = module.WithFunction(fn)
+		fn := dag.Function(strcase.ToCamel(target.Name), returnTypeKind)
+
+		for name, argopt := range target.Args {
+			kind := dag.TypeDef().WithKind(dagger.TypeDefKindStringKind)
+			if !argopt.Required {
+				kind = kind.WithOptional(true)
+			}
+
+			fn = fn.WithArg(
+				strcase.ToLowerCamel(name),
+				kind,
+				dagger.FunctionWithArgOpts{Description: argopt.Doc},
+			)
+
+			module = module.WithFunction(fn)
+		}
 	}
 
 	return dag.Module().WithObject(module)
