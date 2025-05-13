@@ -16,17 +16,17 @@ require (
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230219212500-1f9a474cc2dc // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/earthly/earthly/ast v0.0.2-0.20250416125301-9e553bc2905d // indirect
+	github.com/earthly/earthly/ast v0.0.2-0.20250416125301-9e553bc2905d
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.23.0 // indirect
-	github.com/iancoleman/strcase v0.3.0 // indirect
+	github.com/iancoleman/strcase v0.3.0
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/stretchr/testify v1.10.0
-	github.com/vektah/gqlparser/v2 v2.5.23 // indirect
+	github.com/vektah/gqlparser/v2 v2.5.23
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.34.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.8.0 // indirect
@@ -44,7 +44,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.3.1 // indirect
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
-	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/net v0.38.0
 	golang.org/x/sync v0.12.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
