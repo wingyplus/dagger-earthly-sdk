@@ -30,7 +30,7 @@ type Earthly struct {
 // The method will returns a container once the target call `SAVE IMAGE`.
 func (m *Earthly) Invoke(ctx context.Context, source *dagger.Directory, target *earthfile.Target, args Args) (*dagger.Container, error) {
 	// TODO: convert oci tar to Dagger Container.
-	cmd := []string{"earthly", "+" + target.Name}
+	cmd := []string{"earthly", "--allow-privileged", "+" + target.Name}
 	for k, v := range args {
 		cmd = append(cmd, "--"+k, v)
 	}
