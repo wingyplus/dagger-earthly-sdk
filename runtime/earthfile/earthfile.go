@@ -14,11 +14,12 @@ type Earthfile struct {
 	Ast        spec.Earthfile
 	ModuleName string
 	Targets    TargetsMap
+	SourcePath string
 }
 
 // Initiate Earthfile from path.
 func New(ctx context.Context, path string, modname string) (*Earthfile, error) {
-	ast, err := ast.Parse(ctx, path, true)
+	ast, err := ast.Parse(ctx, path+"/Earthfile", true)
 	if err != nil {
 		return nil, err
 	}
@@ -26,6 +27,7 @@ func New(ctx context.Context, path string, modname string) (*Earthfile, error) {
 		Ast:        ast,
 		ModuleName: modname,
 		Targets:    parseTargetsMap(ast.Targets),
+		SourcePath: path,
 	}, nil
 }
 

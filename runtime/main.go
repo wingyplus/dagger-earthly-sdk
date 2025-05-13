@@ -9,6 +9,7 @@ import (
 
 	"dagger.io/dagger"
 	"dagger.io/dagger/dag"
+	"github.com/iancoleman/strcase"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthfile"
 	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthly"
@@ -44,7 +45,7 @@ func main() {
 }
 
 // TODO: implements invoke target.
-func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, parentName, fnName string, inputArgs map[string][]byte) (_ any, err error) {
+func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, parentName, fnName string, inputArgs map[string]string) (_ any, err error) {
 	// TODO: use me.
 	_ = ctx
 	_ = parentJson
@@ -55,10 +56,24 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, par
 		return ef.ToModule(), nil
 	case ef.ModuleName:
 		target := ef.TargetFromFunctionName(fnName)
-		return earthly.Invoke(target)
+		args := toEarthlyArgs(inputArgs)
+		return earthly.New(nil).Invoke(
+			ctx,
+			dag.Host().Directory(ef.SourcePath),
+			target,
+			args,
+		)
 	default:
 		panic("unreachable")
 	}
+}
+
+func toEarthlyArgs(inputArgs map[string]string) (args earthly.Args) {
+	args = make(earthly.Args)
+	for k, v := range inputArgs {
+		args[strcase.ToScreamingSnake(k)] = v
+	}
+	return
 }
 
 func dispatch(ctx context.Context, ef *earthfile.Earthfile) (rerr error) {
@@ -88,7 +103,7 @@ func dispatch(ctx context.Context, ef *earthfile.Earthfile) (rerr error) {
 		return fmt.Errorf("get fn args: %w", err)
 	}
 
-	inputArgs := map[string][]byte{}
+	inputArgs := map[string]string{}
 	for _, fnArg := range fnArgs {
 		argName, err := fnArg.Name(ctx)
 		if err != nil {
@@ -98,7 +113,11 @@ func dispatch(ctx context.Context, ef *earthfile.Earthfile) (rerr error) {
 		if err != nil {
 			return fmt.Errorf("get fn arg value: %w", err)
 		}
-		inputArgs[argName] = []byte(argValue)
+		var value string
+		if err := json.Unmarshal([]byte(argValue), &value); err != nil {
+			return fmt.Errorf("unmarshal arg value: %w", err)
+		}
+		inputArgs[argName] = value
 	}
 
 	result, err := invoke(ctx, ef, []byte(parentJson), parentName, fnName, inputArgs)
