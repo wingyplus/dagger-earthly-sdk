@@ -56,9 +56,9 @@ func (ef *Earthfile) ToModule() *dagger.Module {
 				kind,
 				dagger.FunctionWithArgOpts{Description: argopt.Doc},
 			)
-
-			module = module.WithFunction(fn)
 		}
+
+		module = module.WithFunction(fn)
 	}
 
 	return dag.Module().WithObject(module)

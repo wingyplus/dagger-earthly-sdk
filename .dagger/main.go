@@ -56,8 +56,6 @@ func (m *EarthlySdk) Codegen(
 	modSource *dagger.ModuleSource,
 	introspectionJSON *dagger.File,
 ) (*dagger.GeneratedCode, error) {
-	// TODO: do not override existing Earthfile.
-
 	subPath, err := modSource.SourceSubpath(ctx)
 	if err != nil {
 		return nil, err
@@ -66,8 +64,17 @@ func (m *EarthlySdk) Codegen(
 	ctr := m.Container.
 		From("alpine").
 		WithWorkdir("/src").
-		WithMountedDirectory(".", modSource.ContextDirectory()).
-		WithFile(subPath+"/Earthfile", dag.CurrentModule().Source().File("templates/Earthfile"))
+		WithMountedDirectory(".", modSource.ContextDirectory())
+
+	_, err = modSource.ContextDirectory().File(subPath + "/Earthfile").Contents(ctx)
+	// Copy Earthfile from template if it's not exist.
+	if err != nil {
+		ctr = ctr.WithFile(
+			subPath+"/Earthfile",
+			dag.CurrentModule().Source().File("templates/Earthfile"),
+		)
+	}
+
 	return dag.GeneratedCode(ctr.Directory("/src")).
 			WithVCSGeneratedPaths([]string{}).
 			WithVCSIgnoredPaths([]string{}),

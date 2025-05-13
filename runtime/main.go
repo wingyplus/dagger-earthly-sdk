@@ -47,10 +47,7 @@ func main() {
 // TODO: implements invoke target.
 func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, parentName, fnName string, inputArgs map[string]string) (_ any, err error) {
 	// TODO: use me.
-	_ = ctx
 	_ = parentJson
-	_ = fnName
-	_ = inputArgs
 	switch parentName {
 	case "":
 		return ef.ToModule(), nil
