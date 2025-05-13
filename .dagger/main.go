@@ -45,7 +45,7 @@ func (m *EarthlySdk) ModuleRuntime(
 		WithMountedDirectory(".", modSource.ContextDirectory()).
 		WithWorkdir(subPath).
 		WithEntrypoint([]string{
-			"earthly-sdk-runtime", fmt.Sprintf("/src/%s/Earthfile", subPath),
+			"earthly-sdk-runtime", fmt.Sprintf("/src/%s", subPath),
 		})
 	return ctr, nil
 }
