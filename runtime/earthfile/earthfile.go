@@ -34,7 +34,14 @@ func New(ctx context.Context, path string, modname string) (*Earthfile, error) {
 // ToModule translate Earthly Earthfile into Dagger Module.
 func (ef *Earthfile) ToModule() *dagger.Module {
 	// TODO: sourcemap.
-	module := dag.TypeDef().WithObject(ef.ModuleName)
+	module := dag.TypeDef().
+		WithObject(ef.ModuleName).
+		WithConstructor(
+			dag.Function("New", dag.TypeDef().WithObject(ef.ModuleName)).
+				WithArg(
+					"dockerUnixSock", dag.TypeDef().WithObject("Socket").WithOptional(true),
+				),
+		)
 
 	for _, target := range ef.Targets {
 		returnTypeKind := dag.TypeDef().WithKind(dagger.TypeDefKindVoidKind)

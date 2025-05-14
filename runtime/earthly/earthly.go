@@ -16,13 +16,12 @@ const (
 
 type Args map[string]string
 
-// TODO: support unix socket?
-func New(dockerConfig *dagger.File) *Earthly {
-	return &Earthly{DockerConfig: dockerConfig}
+func New(dockerUnixSock *dagger.Socket) *Earthly {
+	return &Earthly{DockerUnixSock: dockerUnixSock}
 }
 
 type Earthly struct {
-	DockerConfig *dagger.File
+	DockerUnixSock *dagger.Socket
 }
 
 // Invoke calls Earthly target.
@@ -30,7 +29,7 @@ type Earthly struct {
 // The method will returns a container once the target call `SAVE IMAGE`.
 func (m *Earthly) Invoke(ctx context.Context, source *dagger.Directory, target *earthfile.Target, args Args) (*dagger.Container, error) {
 	// TODO: convert oci tar to Dagger Container.
-	cmd := []string{"earthly", "--ci", "--allow-privileged", "+" + target.Name}
+	cmd := []string{"earthly", "--verbose", "--ci", "--allow-privileged", "+" + target.Name}
 	for k, v := range args {
 		cmd = append(cmd, "--"+k, v)
 	}
@@ -38,7 +37,8 @@ func (m *Earthly) Invoke(ctx context.Context, source *dagger.Directory, target *
 	_, err := m.Runtime(source).
 		WithWorkdir(workspacePath).
 		WithMountedDirectory(".", source).
-		WithExec(cmd).
+		WithEnvVariable("BURST", "1").
+		WithExec(cmd, dagger.ContainerWithExecOpts{InsecureRootCapabilities: true, ExperimentalPrivilegedNesting: true}).
 		Sync(ctx)
 
 	// TODO: fixme
@@ -50,15 +50,24 @@ func (m *Earthly) Runtime(source *dagger.Directory) *dagger.Container {
 global:
   tls_enabled: false
 `
-	return dag.Container().
-		From(earthlyImage).
-		WithServiceBinding("dockerd", m.DockerEngine()).
-		WithServiceBinding("buildkitd", m.Buildkitd()).
-		WithEnvVariable("DOCKER_HOST", "tcp://dockerd:2375").
-		WithEnvVariable("NO_BUILDKIT", "1").
-		WithEnvVariable("EARTHLY_BUILDKIT_HOST", "tcp://buildkitd:8372").
+	ctr := dag.Container().From(earthlyImage).
 		WithNewFile("/root/.earthly/config.yml", config).
 		WithoutEntrypoint()
+
+	if m.DockerUnixSock != nil {
+		ctr = ctr.
+			WithUnixSocket("/var/run/docker.sock", m.DockerUnixSock).
+			WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock")
+	} else {
+		ctr = ctr.
+			WithServiceBinding("dockerd", m.DockerEngine()).
+			WithEnvVariable("DOCKER_HOST", "tcp://dockerd:2375")
+	}
+	return ctr
+	// WithServiceBinding("buildkitd", m.Buildkitd()).
+	// 	WithEnvVariable("NO_BUILDKIT", "1").
+	// 	WithEnvVariable("EARTHLY_BUILDKIT_HOST", "tcp://buildkitd:8372").
+	// WithoutEntrypoint()
 }
 
 func (m *Earthly) DockerEngine() *dagger.Service {
