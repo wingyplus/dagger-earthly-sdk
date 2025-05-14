@@ -50,7 +50,8 @@ func (ef *Earthfile) ToModule() *dagger.Module {
 			returnTypeKind = dag.TypeDef().WithObject("Container")
 		}
 
-		fn := dag.Function(strcase.ToCamel(target.Name), returnTypeKind)
+		fn := dag.Function(strcase.ToCamel(target.Name), returnTypeKind).
+			WithDescription(target.Doc)
 
 		for name, argopt := range target.Args {
 			kind := dag.TypeDef().WithKind(dagger.TypeDefKindStringKind)
