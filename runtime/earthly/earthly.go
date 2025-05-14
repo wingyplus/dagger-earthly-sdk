@@ -29,7 +29,7 @@ type Earthly struct {
 // The method will returns a container once the target call `SAVE IMAGE`.
 func (m *Earthly) Invoke(ctx context.Context, source *dagger.Directory, target *earthfile.Target, args Args) (*dagger.Container, error) {
 	// TODO: convert oci tar to Dagger Container.
-	cmd := []string{"earthly", "--ci", "--allow-privileged", "+" + target.Name}
+	cmd := []string{"earthly", "--verbose", "--ci", "--allow-privileged", "+" + target.Name}
 	for k, v := range args {
 		cmd = append(cmd, "--"+k, v)
 	}
@@ -37,7 +37,8 @@ func (m *Earthly) Invoke(ctx context.Context, source *dagger.Directory, target *
 	_, err := m.Runtime(source).
 		WithWorkdir(workspacePath).
 		WithMountedDirectory(".", source).
-		WithExec(cmd).
+		WithEnvVariable("BURST", "1").
+		WithExec(cmd, dagger.ContainerWithExecOpts{InsecureRootCapabilities: true, ExperimentalPrivilegedNesting: true}).
 		Sync(ctx)
 
 	// TODO: fixme
@@ -55,6 +56,7 @@ global:
 
 	if m.DockerUnixSock != nil {
 		ctr = ctr.
+			WithUnixSocket("/var/run/docker.sock", m.DockerUnixSock).
 			WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock")
 	} else {
 		ctr = ctr.

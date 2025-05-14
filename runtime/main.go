@@ -61,6 +61,7 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, par
 				panic(fmt.Errorf("failed to unmarshal parent object: %w", err))
 			}
 			if inputArgs["dockerUnixSock"] != nil {
+				// HACK: Socket type doesn't expose `UnmarshalJSON` on https://github.com/dagger/dagger/blob/main/sdk/go/dagger.gen.go#L9342.
 				var sockId string
 				err := json.Unmarshal(inputArgs["dockerUnixSock"], &sockId)
 				if err != nil {
@@ -71,10 +72,17 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, par
 			return &parent, nil
 		// Function call
 		default:
-			var parent earthly.Earthly
-			if err := json.Unmarshal(parentJson, &parent); err != nil {
+			var parentArgs map[string]string
+			if err := json.Unmarshal(parentJson, &parentArgs); err != nil {
 				panic(fmt.Errorf("failed to unmarshal parent object: %w", err))
 			}
+			var dockerUnixSock *dagger.Socket
+			if sockId, ok := parentArgs["DockerUnixSock"]; ok && sockId != "" {
+				// HACK: Socket type doesn't expose `UnmarshalJSON` on https://github.com/dagger/dagger/blob/main/sdk/go/dagger.gen.go#L9342.
+				dockerUnixSock = dag.LoadSocketFromID(dagger.SocketID(sockId))
+			}
+			parent := earthly.New(dockerUnixSock)
+
 			target := ef.TargetFromFunctionName(fnName)
 			if target == nil {
 				return nil, fmt.Errorf("unknown function %s", fnName)

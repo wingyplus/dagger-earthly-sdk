@@ -1,7 +1,7 @@
 #!/bin/sh
 
 name=$1
-# rm -rf $name
+rm -rf $name
 mkdir -p "${name}/earthly-sdk"
 cp -r runtime "${name}/earthly-sdk/runtime"
 cp -r .dagger "${name}/earthly-sdk/.dagger"
