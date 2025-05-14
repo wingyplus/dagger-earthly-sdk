@@ -85,6 +85,7 @@ func (m *Earthly) Buildkitd() *dagger.Service {
 		From(earthlyBuildkitdImage).
 		WithEnvVariable("BUILDKIT_TCP_TRANSPORT_ENABLED", "true").
 		WithEnvVariable("BUILDKIT_TLS_ENABLED", "false").
+		WithEnvVariable("CACHE_SIZE_MB", "5120").
 		WithExposedPort(8372).
 		AsService(dagger.ContainerAsServiceOpts{
 			UseEntrypoint:                 true,
