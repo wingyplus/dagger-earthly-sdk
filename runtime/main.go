@@ -45,30 +45,64 @@ func main() {
 }
 
 // TODO: implements invoke target.
-func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, parentName, fnName string, inputArgs map[string]string) (_ any, err error) {
+func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, parentName, fnName string, inputArgs map[string][]byte) (_ any, err error) {
 	// TODO: use me.
 	_ = parentJson
 	switch parentName {
+	// Register module
 	case "":
 		return ef.ToModule(), nil
 	case ef.ModuleName:
-		target := ef.TargetFromFunctionName(fnName)
-		args := toEarthlyArgs(inputArgs)
-		return earthly.New(nil).Invoke(
-			ctx,
-			dag.Host().Directory(ef.SourcePath),
-			target,
-			args,
-		)
-	default:
-		panic("unreachable")
+		switch fnName {
+		// Constructor call
+		case "":
+			var parent earthly.Earthly
+			if err := json.Unmarshal(parentJson, &parent); err != nil {
+				panic(fmt.Errorf("failed to unmarshal parent object: %w", err))
+			}
+			if inputArgs["dockerUnixSock"] != nil {
+				var sockId string
+				err := json.Unmarshal(inputArgs["dockerUnixSock"], &sockId)
+				if err != nil {
+					panic(fmt.Errorf("failed to unmarshal input arg dockerUnixSock: %w", err))
+				}
+				return earthly.New(dag.LoadSocketFromID(dagger.SocketID(sockId))), nil
+			}
+			return &parent, nil
+		// Function call
+		default:
+			var parent earthly.Earthly
+			if err := json.Unmarshal(parentJson, &parent); err != nil {
+				panic(fmt.Errorf("failed to unmarshal parent object: %w", err))
+			}
+			target := ef.TargetFromFunctionName(fnName)
+			if target == nil {
+				return nil, fmt.Errorf("unknown function %s", fnName)
+			}
+			args, err := toEarthlyArgs(inputArgs)
+			if err != nil {
+				return nil, fmt.Errorf("cannot convert to earthly arguments: %w", err)
+			}
+			return parent.Invoke(
+				ctx,
+				dag.Host().Directory(ef.SourcePath),
+				target,
+				args,
+			)
+		}
 	}
+
+	panic("unreachable")
 }
 
-func toEarthlyArgs(inputArgs map[string]string) (args earthly.Args) {
+func toEarthlyArgs(inputArgs map[string][]byte) (args earthly.Args, err error) {
 	args = make(earthly.Args)
 	for k, v := range inputArgs {
-		args[strcase.ToScreamingSnake(k)] = v
+		var s string
+		if err := json.Unmarshal(v, &s); err != nil {
+			return nil, err
+		}
+		args[strcase.ToScreamingSnake(k)] = s
 	}
 	return
 }
@@ -100,7 +134,7 @@ func dispatch(ctx context.Context, ef *earthfile.Earthfile) (rerr error) {
 		return fmt.Errorf("get fn args: %w", err)
 	}
 
-	inputArgs := map[string]string{}
+	inputArgs := map[string][]byte{}
 	for _, fnArg := range fnArgs {
 		argName, err := fnArg.Name(ctx)
 		if err != nil {
@@ -110,11 +144,7 @@ func dispatch(ctx context.Context, ef *earthfile.Earthfile) (rerr error) {
 		if err != nil {
 			return fmt.Errorf("get fn arg value: %w", err)
 		}
-		var value string
-		if err := json.Unmarshal([]byte(argValue), &value); err != nil {
-			return fmt.Errorf("unmarshal arg value: %w", err)
-		}
-		inputArgs[argName] = value
+		inputArgs[argName] = []byte(argValue)
 	}
 
 	result, err := invoke(ctx, ef, []byte(parentJson), parentName, fnName, inputArgs)

@@ -16,13 +16,12 @@ const (
 
 type Args map[string]string
 
-// TODO: support unix socket?
-func New(dockerConfig *dagger.File) *Earthly {
-	return &Earthly{DockerConfig: dockerConfig}
+func New(dockerUnixSock *dagger.Socket) *Earthly {
+	return &Earthly{DockerUnixSock: dockerUnixSock}
 }
 
 type Earthly struct {
-	DockerConfig *dagger.File
+	DockerUnixSock *dagger.Socket
 }
 
 // Invoke calls Earthly target.
@@ -50,15 +49,23 @@ func (m *Earthly) Runtime(source *dagger.Directory) *dagger.Container {
 global:
   tls_enabled: false
 `
-	return dag.Container().
-		From(earthlyImage).
-		WithServiceBinding("dockerd", m.DockerEngine()).
-		WithServiceBinding("buildkitd", m.Buildkitd()).
-		WithEnvVariable("DOCKER_HOST", "tcp://dockerd:2375").
-		WithEnvVariable("NO_BUILDKIT", "1").
-		WithEnvVariable("EARTHLY_BUILDKIT_HOST", "tcp://buildkitd:8372").
+	ctr := dag.Container().From(earthlyImage).
 		WithNewFile("/root/.earthly/config.yml", config).
 		WithoutEntrypoint()
+
+	if m.DockerUnixSock != nil {
+		ctr = ctr.
+			WithEnvVariable("DOCKER_HOST", "unix:///var/run/docker.sock")
+	} else {
+		ctr = ctr.
+			WithServiceBinding("dockerd", m.DockerEngine()).
+			WithEnvVariable("DOCKER_HOST", "tcp://dockerd:2375")
+	}
+	return ctr
+	// WithServiceBinding("buildkitd", m.Buildkitd()).
+	// 	WithEnvVariable("NO_BUILDKIT", "1").
+	// 	WithEnvVariable("EARTHLY_BUILDKIT_HOST", "tcp://buildkitd:8372").
+	// WithoutEntrypoint()
 }
 
 func (m *Earthly) DockerEngine() *dagger.Service {
