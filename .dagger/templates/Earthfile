@@ -2,6 +2,6 @@ VERSION 0.8
 
 # echo-container say anything.
 echo-container:
-  ARG --required STRING_ARGS
+  ARG --required STRING_ARG
   FROM alpine:latest
-  RUN echo ${STRING_ARGS}
+  RUN echo ${STRING_ARG}

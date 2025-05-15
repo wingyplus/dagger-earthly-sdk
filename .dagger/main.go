@@ -9,6 +9,11 @@ import (
 	"github.com/wingyplus/dagger-earthly-sdk/internal/dagger"
 )
 
+const (
+	ModSourceDirPath = "/src"
+	WolfiImage       = "cgr.dev/chainguard/wolfi-base"
+)
+
 func New(
 	// +optional
 	// +defaultPath="./runtime"
@@ -39,13 +44,11 @@ func (m *EarthlySdk) ModuleRuntime(
 	}
 
 	ctr := m.Container.
-		From("alpine").
+		From(WolfiImage).
 		WithFile("/usr/local/bin/earthly-sdk-runtime", m.Runtime()).
-		WithWorkdir("/src").
-		WithMountedDirectory(".", modSource.ContextDirectory()).
-		WithWorkdir(subPath).
+		WithMountedDirectory(ModSourceDirPath, modSource.ContextDirectory()).
 		WithEntrypoint([]string{
-			"earthly-sdk-runtime", fmt.Sprintf("/src/%s", subPath),
+			"earthly-sdk-runtime", fmt.Sprintf("%s/%s", ModSourceDirPath, subPath),
 		})
 	return ctr, nil
 }
@@ -62,8 +65,8 @@ func (m *EarthlySdk) Codegen(
 	}
 
 	ctr := m.Container.
-		From("alpine").
-		WithWorkdir("/src").
+		From(WolfiImage).
+		WithWorkdir(ModSourceDirPath).
 		WithMountedDirectory(".", modSource.ContextDirectory())
 
 	_, err = modSource.ContextDirectory().File(subPath + "/Earthfile").Contents(ctx)
