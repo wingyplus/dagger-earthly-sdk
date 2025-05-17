@@ -94,5 +94,3 @@ func (m *EarthlySdk) Runtime() *dagger.File {
 		WithExec([]string{"go", "build", "-o", "bin/runtime", "."}).
 		File("bin/runtime")
 }
-
-func (m *EarthlySdk) Hello(sock *dagger.Socket) error { return nil }
