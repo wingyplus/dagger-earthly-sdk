@@ -18,10 +18,14 @@ type Target struct {
 	// TODO: sourcemap
 }
 
+// Output returns an image output specified in `SAVE IMAGE` instruction.
 func (t *Target) Output() (string, bool) {
 	for _, statement := range t.Ast.Recipe {
 		if cmd := statement.Command; cmd != nil {
 			if cmd.Name == "SAVE IMAGE" {
+				if cmd.Args[0] == "--push" {
+					return cmd.Args[1], true
+				}
 				return cmd.Args[0], true
 			}
 		}

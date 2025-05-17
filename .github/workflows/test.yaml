@@ -1,0 +1,50 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          version: ^1.24
+      - name: setup dagger
+        env:
+          DAGGER_VERSION: v0.18.8
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh
+      - name: warm engine
+        run: dagger core version
+      - name: go test
+        working-directory: runtime
+        run: |
+          dagger run go test ./...
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          version: ^1.24
+      - name: setup dagger
+        env:
+          DAGGER_VERSION: v0.18.8
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh
+      - name: warm engine
+        run: dagger core version
+      - name: dagger init --sdk=earthly-sdk
+        run: |
+          set -e
+
+          ./scripts/init.sh simple
+          cd simple
+          output=$(dagger shell -c '. | echo-container '🌍🚀' | file /hello.txt | contents')
+          [[ "${output}" == '🌍🚀' ]] || exit 1

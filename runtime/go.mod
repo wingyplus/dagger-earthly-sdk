@@ -16,6 +16,7 @@ require (
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230219212500-1f9a474cc2dc // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/dagger/testctx v0.0.4
 	github.com/earthly/earthly/ast v0.0.2-0.20250416125301-9e553bc2905d
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

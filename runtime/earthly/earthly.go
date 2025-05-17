@@ -27,22 +27,30 @@ type Earthly struct {
 // Invoke calls Earthly target.
 //
 // The method will returns a container once the target call `SAVE IMAGE`.
-func (m *Earthly) Invoke(ctx context.Context, source *dagger.Directory, target *earthfile.Target, args Args) (*dagger.Container, error) {
-	// TODO: convert oci tar to Dagger Container.
-	cmd := []string{"earthly", "--verbose", "--ci", "--allow-privileged", "+" + target.Name}
+func (m *Earthly) Invoke(ctx context.Context, source *dagger.Directory, target *earthfile.Target, args Args) (any, error) {
+	cmd := []string{"earthly", "--output", "--allow-privileged", "+" + target.Name}
 	for k, v := range args {
 		cmd = append(cmd, "--"+k, v)
 	}
 
-	_, err := m.Runtime(source).
+	ctr := m.Runtime(source).
 		WithWorkdir(workspacePath).
 		WithMountedDirectory(".", source).
 		WithEnvVariable("BURST", "1").
-		WithExec(cmd, dagger.ContainerWithExecOpts{InsecureRootCapabilities: true, ExperimentalPrivilegedNesting: true}).
-		Sync(ctx)
+		WithExec(cmd, dagger.ContainerWithExecOpts{
+			InsecureRootCapabilities:      true,
+			ExperimentalPrivilegedNesting: true,
+		})
 
-	// TODO: fixme
-	return nil, err
+	if image, ok := target.Output(); ok {
+		// Has SAVE IMAGE, converting it to container.
+		image := ctr.WithExec([]string{"docker", "save", "--output", "out.tar", image}).File("out.tar")
+		return dag.Container().Import(image), nil
+	} else {
+		// Otherwise, no output, return void.
+		_, err := ctr.Sync(ctx)
+		return nil, err
+	}
 }
 
 func (m *Earthly) Runtime(source *dagger.Directory) *dagger.Container {
@@ -61,13 +69,12 @@ global:
 	} else {
 		ctr = ctr.
 			WithServiceBinding("dockerd", m.DockerEngine()).
+			WithServiceBinding("buildkitd", m.Buildkitd()).
+			WithEnvVariable("NO_BUILDKIT", "1").
+			WithEnvVariable("EARTHLY_BUILDKIT_HOST", "tcp://buildkitd:8372").
 			WithEnvVariable("DOCKER_HOST", "tcp://dockerd:2375")
 	}
 	return ctr
-	// WithServiceBinding("buildkitd", m.Buildkitd()).
-	// 	WithEnvVariable("NO_BUILDKIT", "1").
-	// 	WithEnvVariable("EARTHLY_BUILDKIT_HOST", "tcp://buildkitd:8372").
-	// WithoutEntrypoint()
 }
 
 func (m *Earthly) DockerEngine() *dagger.Service {

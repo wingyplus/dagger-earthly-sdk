@@ -10,6 +10,10 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
+type NamedReader = ast.NamedReader
+
+var FromReader = ast.FromReader
+
 type Earthfile struct {
 	Ast        spec.Earthfile
 	ModuleName string
@@ -19,7 +23,11 @@ type Earthfile struct {
 
 // Initiate Earthfile from path.
 func New(ctx context.Context, path string, modname string) (*Earthfile, error) {
-	ast, err := ast.Parse(ctx, path+"/Earthfile", true)
+	return NewFromOpts(ctx, path, ast.FromPath(path+"/Earthfile"), modname)
+}
+
+func NewFromOpts(ctx context.Context, path string, opt ast.FromOpt, modname string) (*Earthfile, error) {
+	ast, err := ast.ParseOpts(ctx, opt, ast.WithSourceMap())
 	if err != nil {
 		return nil, err
 	}
