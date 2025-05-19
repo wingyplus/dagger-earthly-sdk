@@ -1,0 +1,7 @@
+VERSION 0.8
+
+build:
+  FROM alpine
+
+image-a:
+  FROM alpine
