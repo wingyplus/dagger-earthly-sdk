@@ -38,15 +38,17 @@ func ToFunction(target *earthfile.Target) *dagger.Function {
 
 	for name, argopt := range target.Args {
 		kind := dag.TypeDef().WithKind(dagger.TypeDefKindStringKind)
+		opts := dagger.FunctionWithArgOpts{Description: argopt.Doc}
+
 		if !argopt.Required {
 			kind = kind.WithOptional(true)
 		}
 
-		fn = fn.WithArg(
-			strcase.ToLowerCamel(name),
-			kind,
-			dagger.FunctionWithArgOpts{Description: argopt.Doc},
-		)
+		if argopt.DefaultValue != "" {
+			opts.DefaultValue = dagger.JSON(argopt.DefaultValue)
+		}
+
+		fn = fn.WithArg(strcase.ToLowerCamel(name), kind, opts)
 	}
 
 	return fn

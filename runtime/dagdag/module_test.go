@@ -2,6 +2,7 @@ package dagdag
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"dagger.io/dagger"
@@ -21,11 +22,7 @@ func TestModule(t *testing.T) {
 type ModuleSuite struct{}
 
 func (suite *ModuleSuite) TestToModule(ctx context.Context, t *testctx.T) {
-	earthfile, err := earthfile.New(ctx, "testdata/to-module", "simple")
-	require.NoError(t, err)
-
-	module, err := ToModule(earthfile).Sync(ctx)
-	require.NoError(t, err)
+	module := moduleFromPath(ctx, t, "testdata/to-module", "simple")
 
 	objects, err := module.Objects(ctx)
 	require.NoError(t, err)
@@ -44,13 +41,62 @@ func (suite *ModuleSuite) TestToModule(ctx context.Context, t *testctx.T) {
 	require.Equal(t, "imageA", name)
 }
 
+func (suite *ModuleSuite) TestArgument(ctx context.Context, t *testctx.T) {
+	module := moduleFromPath(ctx, t, "testdata/arguments", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+
+	args, err := functions[0].Args(ctx)
+	require.NoError(t, err)
+
+	t.Run("arguments", func(ctx context.Context, t *testctx.T) {
+		require.Len(t, args, 3)
+
+		name, err := args[0].Name(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "name", name)
+
+		name, err = args[1].Name(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "tag", name)
+
+		name, err = args[2].Name(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "argDefault", name)
+
+		for _, arg := range args {
+			assertTypeDef4(ctx, t, arg.TypeDef(), dagger.TypeDefKindStringKind)
+		}
+	})
+
+	t.Run("optional argument", func(ctx context.Context, t *testctx.T) {
+		optional, err := args[0].TypeDef().Optional(ctx)
+		require.NoError(t, err)
+		require.True(t, optional)
+	})
+
+	t.Run("required argument", func(ctx context.Context, t *testctx.T) {
+		optional, err := args[1].TypeDef().Optional(ctx)
+		require.NoError(t, err)
+		require.False(t, optional)
+	})
+
+	t.Run("default value", func(ctx context.Context, t *testctx.T) {
+		jsonValue, err := args[2].DefaultValue(ctx)
+		require.NoError(t, err)
+		var value string
+		require.NoError(t, json.Unmarshal([]byte(jsonValue), &value))
+		require.Equal(t, "default value", value)
+	})
+}
+
 func (suite *ModuleSuite) TestReturnVoidType(ctx context.Context, t *testctx.T) {
 	t.Run("no SAVE IMAGE", func(ctx context.Context, t *testctx.T) {
-		earthfile, err := earthfile.New(ctx, "../earthfile/testdata/simple", "simple")
-		require.NoError(t, err)
-
-		module, err := ToModule(earthfile).Sync(ctx)
-		require.NoError(t, err)
+		module := moduleFromPath(ctx, t, "../earthfile/testdata/simple", "simple")
 
 		objects, err := module.Objects(ctx)
 		require.NoError(t, err)
@@ -64,11 +110,7 @@ func (suite *ModuleSuite) TestReturnVoidType(ctx context.Context, t *testctx.T) 
 
 func (suite *ModuleSuite) TestReturContainerType(ctx context.Context, t *testctx.T) {
 	t.Run("has SAVE IMAGE", func(ctx context.Context, t *testctx.T) {
-		earthfile, err := earthfile.New(ctx, "testdata/container-type", "simple")
-		require.NoError(t, err)
-
-		module, err := ToModule(earthfile).Sync(ctx)
-		require.NoError(t, err)
+		module := moduleFromPath(ctx, t, "testdata/container-type", "simple")
 
 		objects, err := module.Objects(ctx)
 		require.NoError(t, err)
@@ -80,11 +122,7 @@ func (suite *ModuleSuite) TestReturContainerType(ctx context.Context, t *testctx
 	})
 
 	t.Run("SAVE IMAGE inside IF statement", func(ctx context.Context, t *testctx.T) {
-		earthfile, err := earthfile.New(ctx, "testdata/save-image-if-stmt", "simple")
-		require.NoError(t, err)
-
-		module, err := ToModule(earthfile).Sync(ctx)
-		require.NoError(t, err)
+		module := moduleFromPath(ctx, t, "testdata/save-image-if-stmt", "simple")
 
 		objects, err := module.Objects(ctx)
 		require.NoError(t, err)
@@ -115,4 +153,17 @@ func assertTypeDef5(ctx context.Context, t *testctx.T, typeDef *dagger.TypeDef, 
 		require.NoError(t, err)
 		require.Equal(t, name, n)
 	}
+}
+
+func moduleFromPath(ctx context.Context, t *testctx.T, path string, modname string) *dagger.Module {
+	t.Helper()
+
+	earthfile, err := earthfile.New(ctx, path, modname)
+	require.NoError(t, err)
+
+	module, err := ToModule(earthfile).Sync(ctx)
+	require.NoError(t, err)
+
+	return module
+
 }

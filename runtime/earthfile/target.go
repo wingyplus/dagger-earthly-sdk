@@ -6,8 +6,10 @@ import (
 )
 
 type ArgOpt struct {
-	Required bool
-	Doc      string
+	Name         string
+	DefaultValue string
+	Required     bool
+	Doc          string
 }
 
 type Target struct {
@@ -63,13 +65,9 @@ func parseTarget(ast spec.Target) *Target {
 	for _, statement := range ast.Recipe {
 		if cmd := statement.Command; cmd != nil {
 			if cmd.Name == "ARG" {
-				name := cmd.Args[0]
-				required := false
-				if cmd.Args[0] == "--required" {
-					name = cmd.Args[1]
-					required = true
-				}
-				target.Args[name] = ArgOpt{Required: required, Doc: cmd.Docs}
+				arg := parseArg(cmd.Args)
+				arg.Doc = cmd.Docs
+				target.Args[arg.Name] = arg
 			}
 		}
 	}
@@ -83,6 +81,18 @@ func parseTargetsMap(asts []spec.Target) (targets TargetsMap) {
 	for _, ast := range asts {
 		target := parseTarget(ast)
 		targets[strcase.ToCamel(target.Name)] = target
+	}
+	return
+}
+
+func parseArg(arg []string) (opt ArgOpt) {
+	if arg[0] == "--required" {
+		opt.Required = true
+		arg = arg[1:]
+	}
+	opt.Name = arg[0]
+	if len(arg) > 1 {
+		opt.DefaultValue = arg[2]
 	}
 	return
 }
