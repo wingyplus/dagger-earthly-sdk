@@ -1,0 +1,13 @@
+VERSION 0.8
+
+build:
+  IF [ a = "b" ]
+    SAVE IMAGE build-image
+  END
+
+build-2: 
+  IF [ a = "b" ]
+    SAVE IMAGE build-image
+  ELSE
+    SAVE IMAGE build-image-2
+  END

@@ -22,13 +22,33 @@ type Target struct {
 func (t *Target) Output() (string, bool) {
 	for _, statement := range t.Ast.Recipe {
 		if cmd := statement.Command; cmd != nil {
-			if cmd.Name == "SAVE IMAGE" {
-				if cmd.Args[0] == "--push" {
-					return cmd.Args[1], true
-				}
-				return cmd.Args[0], true
+			if out, found := saveImageOutput(cmd); found {
+				return out, found
 			}
 		}
+
+		if stmt := statement.If; stmt != nil {
+			for _, statement := range stmt.IfBody {
+				if out, found := saveImageOutput(statement.Command); found {
+					return out, found
+				}
+			}
+			for _, statement := range *stmt.ElseBody {
+				if out, found := saveImageOutput(statement.Command); found {
+					return out, found
+				}
+			}
+		}
+	}
+	return "", false
+}
+
+func saveImageOutput(cmd *spec.Command) (string, bool) {
+	if cmd.Name == "SAVE IMAGE" {
+		if cmd.Args[0] == "--push" {
+			return cmd.Args[1], true
+		}
+		return cmd.Args[0], true
 	}
 	return "", false
 }

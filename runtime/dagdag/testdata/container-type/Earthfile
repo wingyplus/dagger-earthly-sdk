@@ -1,0 +1,5 @@
+VERSION 0.8
+
+build:
+  FROM alpine
+  SAVE IMAGE my-build
