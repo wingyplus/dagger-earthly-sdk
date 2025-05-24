@@ -1,0 +1,13 @@
+VERSION 0.8
+
+optional-arg:
+  ARG A
+
+required-arg:
+  ARG --required B
+
+optional-default-arg:
+  ARG C=D
+
+optional-default-arg-2:
+  ARG C=D=E

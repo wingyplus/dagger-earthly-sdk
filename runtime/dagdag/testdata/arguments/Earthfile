@@ -1,0 +1,6 @@
+VERSION 0.8
+
+args:
+  ARG NAME
+  ARG --required TAG
+  ARG ARG_DEFAULT="default value"
