@@ -9,3 +9,9 @@ args:
 documented-args:
   # The image name.
   ARG IMAGE_NAME
+
+# Mix of builtin and user ARGs — builtins must not appear as Dagger params.
+builtin-args:
+  ARG TARGETPLATFORM
+  ARG EARTHLY_CI
+  ARG USER_ARG

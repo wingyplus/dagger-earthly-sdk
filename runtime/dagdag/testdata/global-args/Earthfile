@@ -1,0 +1,11 @@
+VERSION 0.8
+
+# Global ARG with a default value.
+ARG --global REGISTRY=docker.io
+# Global ARG without a default.
+ARG --global VERSION
+
+build:
+  FROM alpine
+  RUN echo $REGISTRY
+  SAVE IMAGE

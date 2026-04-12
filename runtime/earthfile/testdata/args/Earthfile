@@ -22,3 +22,9 @@ multi-arg:
   ARG --required FOO
   ARG BAR=default-bar
   ARG BAZ
+
+# Mix of builtin and user ARGs to verify filtering.
+builtin-arg:
+  ARG TARGETPLATFORM
+  ARG EARTHLY_CI
+  ARG REAL_ARG

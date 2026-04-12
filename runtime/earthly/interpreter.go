@@ -46,9 +46,16 @@ func (i *Interpreter) Build(ctx context.Context, target *earthfile.Target, args 
 		return c, nil
 	}
 
-	// Merge resolved args over defaults so `ARG FOO=bar` works when the
-	// caller didn't pass the argument.
+	// Merge resolved args in precedence order (lowest to highest):
+	//   1. Global ARG defaults from the base recipe.
+	//   2. Target-specific ARG defaults.
+	//   3. Caller-provided overrides.
 	resolved := map[string]string{}
+	for name, opt := range i.Earthfile.GlobalArgs {
+		if opt.DefaultValue != "" {
+			resolved[name] = opt.DefaultValue
+		}
+	}
 	for name, opt := range target.Args {
 		if opt.DefaultValue != "" {
 			resolved[name] = opt.DefaultValue

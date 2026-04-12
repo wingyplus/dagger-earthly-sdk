@@ -325,6 +325,45 @@ app:
 	require.Equal(t, "base-label\n", out)
 }
 
+func (s *EarthlySuite) TestGlobalArgDefault(ctx context.Context, t *testctx.T) {
+	// Global ARG default must be available in every target without being
+	// explicitly passed by the caller.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+ARG --global REGISTRY=docker.io
+
+build:
+    FROM alpine
+    RUN echo "$REGISTRY" > /registry.txt
+    SAVE IMAGE global-arg-default-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/registry.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "docker.io\n", out)
+}
+
+func (s *EarthlySuite) TestGlobalArgOverride(ctx context.Context, t *testctx.T) {
+	// Caller-provided value takes precedence over the global ARG default.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+ARG --global REGISTRY=docker.io
+
+build:
+    FROM alpine
+    RUN echo "$REGISTRY" > /registry.txt
+    SAVE IMAGE global-arg-override-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{"REGISTRY": "ghcr.io"})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/registry.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "ghcr.io\n", out)
+}
+
 // -- COPY from build context ----------------------------------------------
 
 func (s *EarthlySuite) TestCopyFile(ctx context.Context, t *testctx.T) {

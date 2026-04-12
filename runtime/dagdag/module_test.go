@@ -278,6 +278,71 @@ func (suite *ModuleSuite) TestReturContainerType(ctx context.Context, t *testctx
 	})
 }
 
+// TestGlobalArgInFunction verifies that global ARGs from the base recipe are
+// exposed as optional parameters on every Dagger function in the module.
+func (suite *ModuleSuite) TestGlobalArgInFunction(ctx context.Context, t *testctx.T) {
+	module := moduleFromPath(ctx, t, "testdata/global-args", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+	require.Len(t, functions, 1)
+
+	byName := argsByName(ctx, t, functions)
+
+	// REGISTRY is a global ARG with default "docker.io" → must be optional.
+	registry, ok := byName["registry"]
+	require.True(t, ok, "expected Dagger arg 'registry' from ARG --global REGISTRY")
+
+	optional, err := registry.TypeDef().Optional(ctx)
+	require.NoError(t, err)
+	require.True(t, optional, "global ARG REGISTRY must be optional")
+
+	jsonValue, err := registry.DefaultValue(ctx)
+	require.NoError(t, err)
+	var decoded string
+	require.NoError(t, json.Unmarshal([]byte(jsonValue), &decoded))
+	require.Equal(t, "docker.io", decoded)
+
+	// VERSION is a global ARG with no default → optional but no DefaultValue.
+	version, ok := byName["version"]
+	require.True(t, ok, "expected Dagger arg 'version' from ARG --global VERSION")
+
+	optional, err = version.TypeDef().Optional(ctx)
+	require.NoError(t, err)
+	require.True(t, optional, "global ARG VERSION must be optional")
+
+	dv, err := version.DefaultValue(ctx)
+	require.NoError(t, err)
+	require.Empty(t, dv, "global ARG VERSION with no default should have no DefaultValue")
+}
+
+// TestBuiltinArgSkipped verifies that Earthly built-in ARGs declared in a
+// target do not appear as Dagger function parameters.
+func (suite *ModuleSuite) TestBuiltinArgSkipped(ctx context.Context, t *testctx.T) {
+	module := moduleFromPath(ctx, t, "testdata/arguments", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+
+	byName := argsByName(ctx, t, functions)
+
+	// Built-in ARGs must be absent from the Dagger function parameters.
+	_, hasTargetPlatform := byName["targetplatform"]
+	require.False(t, hasTargetPlatform, "TARGETPLATFORM is a builtin and must not be a Dagger param")
+	_, hasEarthlyCi := byName["earthlyCi"]
+	require.False(t, hasEarthlyCi, "EARTHLY_CI is a builtin and must not be a Dagger param")
+
+	// The regular user ARG must still be present.
+	_, hasUserArg := byName["userArg"]
+	require.True(t, hasUserArg, "USER_ARG is a regular ARG and must be a Dagger param")
+}
+
 func assertTypeDef4(ctx context.Context, t *testctx.T, typeDef *dagger.TypeDef, kind dagger.TypeDefKind) {
 	t.Helper()
 

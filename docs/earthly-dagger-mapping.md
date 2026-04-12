@@ -59,14 +59,37 @@ Sources: `earthly/ast/command/names.go`, `earthly/ast/commandflag/flags.go`,
 
 ## Variables
 
-| Earthly                 | Dagger Go SDK (declaration)                                                                       | Dagger Go SDK (runtime)                                  | Notes                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------- |
-| `ARG <name>`            | `fn.WithArg(name, dag.TypeDef().WithKind(dagger.TypeDefKindStringKind).WithOptional(true), opts)` | `ctr.WithEnvVariable(name, val)` before `WithExec`       | Optional ARG              |
-| `ARG --required <name>` | `fn.WithArg(name, dag.TypeDef().WithKind(dagger.TypeDefKindStringKind), opts)`                    | Same as above                                            | Required ARG              |
-| `ARG <name>=<default>`  | `fn.WithArg(name, kind, dagger.FunctionWithArgOpts{DefaultValue: dagger.JSON(val)})`              | Same as above                                            | Default provided          |
-| `ENV KEY=VALUE`         | N/A (not a function parameter)                                                                    | `ctr.WithEnvVariable(name, value)` → `*dagger.Container` | Baked into image          |
-| `LET <name>=<value>`    | N/A                                                                                               | Go local variable in interpreter                         | Mutable local variable    |
-| `SET <name>=<value>`    | N/A                                                                                               | Reassign Go local variable                               | Reassign a `LET` variable |
+| Earthly                           | Dagger Go SDK (declaration)                                                                          | Dagger Go SDK (runtime)                                  | Notes                                                                               |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `ARG <name>`                      | `fn.WithArg(name, dag.TypeDef().WithKind(dagger.TypeDefKindStringKind).WithOptional(true), opts)`    | `ctr.WithEnvVariable(name, val)` before `WithExec`       | Optional ARG; expands to empty string if not supplied                               |
+| `ARG --required <name>`           | `fn.WithArg(name, dag.TypeDef().WithKind(dagger.TypeDefKindStringKind), opts)`                       | Same as above                                            | Required ARG; Dagger enforces a value must be provided                              |
+| `ARG <name>=<default>`            | `fn.WithArg(name, kind, dagger.FunctionWithArgOpts{DefaultValue: dagger.JSON(val)})`                 | Same as above                                            | Default provided; parameter is optional                                             |
+| `ARG --global <name>[=<default>]` | `fn.WithArg(name, dag.TypeDef().WithKind(...).WithOptional(true), opts)` added to **every** function | Injected into resolved args before target-specific ARGs  | Declared in base recipe; visible in all targets; always optional in Dagger          |
+| `ARG EARTHLY_*` / builtin ARGs    | **Skipped** — not exposed as Dagger function parameters                                              | Expands to empty string (builtins not yet auto-injected) | Platform ARGs (`TARGETPLATFORM`, `TARGETOS`, etc.) and `EARTHLY_*` are filtered out |
+| `ARG <name>=$(shell-expr)`        | Not supported — dynamic defaults cannot be evaluated at schema registration time                     | N/A                                                      | Store the literal `$(...)` string; warn users this form is unsupported              |
+| `ENV KEY=VALUE`                   | N/A (not a function parameter)                                                                       | `ctr.WithEnvVariable(name, value)` → `*dagger.Container` | Baked into image                                                                    |
+| `LET <name>=<value>`              | N/A                                                                                                  | Go local variable in interpreter                         | Mutable local variable                                                              |
+| `SET <name>=<value>`              | N/A                                                                                                  | Reassign Go local variable                               | Reassign a `LET` variable                                                           |
+
+### ARG scoping rules (VERSION 0.7+)
+
+With the `--explicit-global` feature enabled by default in `VERSION 0.7+`:
+
+- A plain `ARG NAME` in the **base recipe** is scoped to the base target only and is **not** global.
+- `ARG --global NAME` in the **base recipe** is visible in every target and is added as an optional parameter to every Dagger function.
+- `ARG NAME` inside a **target recipe** is scoped to that target only and maps to a function parameter for that function alone.
+- `ARG --required NAME` in a target maps to a required (non-optional) Dagger function parameter.
+
+### Builtin ARG filtering
+
+Earthly built-in ARGs are automatically detected and excluded from Dagger function parameters:
+
+- All names matching `EARTHLY_*` (e.g. `EARTHLY_CI`, `EARTHLY_GIT_HASH`)
+- Platform ARGs: `TARGETPLATFORM`, `TARGETOS`, `TARGETARCH`, `TARGETVARIANT`
+- Native ARGs: `NATIVEPLATFORM`, `NATIVEOS`, `NATIVEARCH`, `NATIVEVARIANT`
+- User ARGs: `USERPLATFORM`, `USEROS`, `USERARCH`, `USERVARIANT`
+
+These ARGs are still parsed and stored in `target.Args` so the interpreter can reference them, but `IsBuiltinArg()` gates them out of the Dagger schema.
 
 ---
 
