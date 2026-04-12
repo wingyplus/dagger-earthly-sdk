@@ -14,10 +14,7 @@ func ToModule(ef *earthfile.Earthfile) *dagger.Module {
 	module := dag.TypeDef().
 		WithObject(ef.ModuleName).
 		WithConstructor(
-			dag.Function("New", dag.TypeDef().WithObject(ef.ModuleName)).
-				WithArg(
-					"dockerUnixSock", dag.TypeDef().WithObject("Socket").WithOptional(true),
-				),
+			dag.Function("New", dag.TypeDef().WithObject(ef.ModuleName)),
 		)
 
 	for _, target := range ef.Targets {

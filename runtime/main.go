@@ -45,8 +45,7 @@ func main() {
 	}
 }
 
-// TODO: implements invoke target.
-func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, parentName, fnName string, inputArgs map[string][]byte) (_ any, err error) {
+func invoke(ctx context.Context, ef *earthfile.Earthfile, parentName, fnName string, inputArgs map[string][]byte) (_ any, err error) {
 	switch parentName {
 	// Register module
 	case "":
@@ -55,33 +54,9 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, par
 		switch fnName {
 		// Constructor call
 		case "":
-			var parent earthly.Earthly
-			if err := json.Unmarshal(parentJson, &parent); err != nil {
-				panic(fmt.Errorf("failed to unmarshal parent object: %w", err))
-			}
-			if inputArgs["dockerUnixSock"] != nil {
-				// HACK: Socket type doesn't expose `UnmarshalJSON` on https://github.com/dagger/dagger/blob/main/sdk/go/dagger.gen.go#L9342.
-				var sockId string
-				err := json.Unmarshal(inputArgs["dockerUnixSock"], &sockId)
-				if err != nil {
-					panic(fmt.Errorf("failed to unmarshal input arg dockerUnixSock: %w", err))
-				}
-				return earthly.New(dag.LoadSocketFromID(dagger.SocketID(sockId))), nil
-			}
-			return &parent, nil
+			return earthly.New(), nil
 		// Function call
 		default:
-			var parentArgs map[string]string
-			if err := json.Unmarshal(parentJson, &parentArgs); err != nil {
-				panic(fmt.Errorf("failed to unmarshal parent object: %w", err))
-			}
-			var dockerUnixSock *dagger.Socket
-			if sockId, ok := parentArgs["DockerUnixSock"]; ok && sockId != "" {
-				// HACK: Socket type doesn't expose `UnmarshalJSON` on https://github.com/dagger/dagger/blob/main/sdk/go/dagger.gen.go#L9342.
-				dockerUnixSock = dag.LoadSocketFromID(dagger.SocketID(sockId))
-			}
-			parent := earthly.New(dockerUnixSock)
-
 			target := ef.TargetFromFunctionName(fnName)
 			if target == nil {
 				return nil, fmt.Errorf("unknown function %s", fnName)
@@ -90,9 +65,10 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentJson []byte, par
 			if err != nil {
 				return nil, fmt.Errorf("cannot convert to earthly arguments: %w", err)
 			}
-			return parent.Invoke(
+			return earthly.New().Invoke(
 				ctx,
 				dag.Host().Directory(ef.SourcePath),
+				ef,
 				target,
 				args,
 			)
@@ -132,8 +108,7 @@ func dispatch(ctx context.Context, ef *earthfile.Earthfile) (rerr error) {
 	if err != nil {
 		return fmt.Errorf("get fn name: %w", err)
 	}
-	parentJson, err := fnCall.Parent(ctx)
-	if err != nil {
+	if _, err := fnCall.Parent(ctx); err != nil {
 		return fmt.Errorf("get fn parent: %w", err)
 	}
 	fnArgs, err := fnCall.InputArgs(ctx)
@@ -154,7 +129,7 @@ func dispatch(ctx context.Context, ef *earthfile.Earthfile) (rerr error) {
 		inputArgs[argName] = []byte(argValue)
 	}
 
-	result, err := invoke(ctx, ef, []byte(parentJson), parentName, fnName, inputArgs)
+	result, err := invoke(ctx, ef, parentName, fnName, inputArgs)
 	if err != nil {
 		var exec *dagger.ExecError
 		if errors.As(err, &exec) {
