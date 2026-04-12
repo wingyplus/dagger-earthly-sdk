@@ -11,7 +11,26 @@ import (
 	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthfile"
 )
 
-// TODO: add arguments test.
+// argsByName collects function args into a map keyed by arg name for
+// order-independent lookup. The range target.Args map has non-deterministic
+// iteration order, so registered arg order in the Dagger function is not
+// guaranteed. Tests that check specific arg properties must look up by name.
+func argsByName(ctx context.Context, t *testctx.T, fns []dagger.Function) map[string]*dagger.FunctionArg {
+	t.Helper()
+	result := map[string]*dagger.FunctionArg{}
+	for i := range fns {
+		fn := &fns[i]
+		args, err := fn.Args(ctx)
+		require.NoError(t, err)
+		for j := range args {
+			arg := &args[j]
+			name, err := arg.Name(ctx)
+			require.NoError(t, err)
+			result[name] = arg
+		}
+	}
+	return result
+}
 
 func TestModule(t *testing.T) {
 	testctx.New(t,
@@ -92,6 +111,130 @@ func (suite *ModuleSuite) TestArgument(ctx context.Context, t *testctx.T) {
 		require.NoError(t, json.Unmarshal([]byte(jsonValue), &value))
 		require.Equal(t, "default value", value)
 	})
+}
+
+// TestArgNameCasing verifies that ARG names declared in SCREAMING_SNAKE_CASE
+// are registered in the Dagger module as lowerCamelCase, which is the
+// convention expected by the toEarthlyArgs roundtrip in main.go.
+func (suite *ModuleSuite) TestArgNameCasing(ctx context.Context, t *testctx.T) {
+	module := moduleFromPath(ctx, t, "testdata/arguments", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+
+	byName := argsByName(ctx, t, functions)
+
+	// ARG NAME → "name" (single word, all lower)
+	_, ok := byName["name"]
+	require.True(t, ok, "expected Dagger arg 'name' from ARG NAME")
+
+	// ARG TAG (required) → "tag"
+	_, ok = byName["tag"]
+	require.True(t, ok, "expected Dagger arg 'tag' from ARG --required TAG")
+
+	// ARG ARG_DEFAULT → "argDefault" (lowerCamelCase of SCREAMING_SNAKE)
+	_, ok = byName["argDefault"]
+	require.True(t, ok, "expected Dagger arg 'argDefault' from ARG ARG_DEFAULT")
+}
+
+// TestArgOptionalityAndDefault verifies the optional/required semantics and
+// default value JSON encoding for each ARG variant.
+func (suite *ModuleSuite) TestArgOptionalityAndDefault(ctx context.Context, t *testctx.T) {
+	module := moduleFromPath(ctx, t, "testdata/arguments", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+
+	byName := argsByName(ctx, t, functions)
+
+	t.Run("optional arg has no default", func(ctx context.Context, t *testctx.T) {
+		arg, ok := byName["name"]
+		require.True(t, ok)
+
+		optional, err := arg.TypeDef().Optional(ctx)
+		require.NoError(t, err)
+		require.True(t, optional, "ARG NAME (no default, no --required) must be optional")
+
+		dv, err := arg.DefaultValue(ctx)
+		require.NoError(t, err)
+		require.Empty(t, dv, "ARG NAME with no default should have no DefaultValue")
+	})
+
+	t.Run("required arg is not optional and has no default", func(ctx context.Context, t *testctx.T) {
+		arg, ok := byName["tag"]
+		require.True(t, ok)
+
+		optional, err := arg.TypeDef().Optional(ctx)
+		require.NoError(t, err)
+		require.False(t, optional, "ARG --required TAG must not be optional")
+
+		dv, err := arg.DefaultValue(ctx)
+		require.NoError(t, err)
+		require.Empty(t, dv, "required ARG should have no DefaultValue registered")
+	})
+
+	t.Run("default value is JSON-encoded string", func(ctx context.Context, t *testctx.T) {
+		arg, ok := byName["argDefault"]
+		require.True(t, ok)
+
+		optional, err := arg.TypeDef().Optional(ctx)
+		require.NoError(t, err)
+		require.True(t, optional, "ARG with default must be optional")
+
+		jsonValue, err := arg.DefaultValue(ctx)
+		require.NoError(t, err)
+
+		// DefaultValue must be a valid JSON string, not raw text.
+		var decoded string
+		require.NoError(t, json.Unmarshal([]byte(jsonValue), &decoded),
+			"DefaultValue must be a JSON-encoded string, got: %s", jsonValue)
+		require.Equal(t, "default value", decoded)
+	})
+}
+
+// TestArgDocumentation verifies that doc comments on ARGs are propagated
+// into the Dagger function argument description.
+func (suite *ModuleSuite) TestArgDocumentation(ctx context.Context, t *testctx.T) {
+	module := moduleFromPath(ctx, t, "testdata/arguments", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+
+	byName := argsByName(ctx, t, functions)
+
+	arg, ok := byName["imageName"]
+	require.True(t, ok, "expected Dagger arg 'imageName' from documented-args target")
+
+	desc, err := arg.Description(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "The image name.", desc)
+}
+
+// TestArgAllStringKind verifies that all ARGs are registered as StringKind
+// regardless of their naming or default value.
+func (suite *ModuleSuite) TestArgAllStringKind(ctx context.Context, t *testctx.T) {
+	module := moduleFromPath(ctx, t, "testdata/arguments", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+
+	byName := argsByName(ctx, t, functions)
+
+	for _, arg := range byName {
+		assertTypeDef4(ctx, t, arg.TypeDef(), dagger.TypeDefKindStringKind)
+	}
 }
 
 func (suite *ModuleSuite) TestReturnVoidType(ctx context.Context, t *testctx.T) {

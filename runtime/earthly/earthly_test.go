@@ -172,6 +172,159 @@ build:
 	require.Equal(t, "Hello, Dagger\n", out)
 }
 
+func (s *EarthlySuite) TestArgInFromImage(ctx context.Context, t *testctx.T) {
+	// ARG used as the image reference in FROM $BASE_IMAGE.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    ARG BASE_IMAGE=alpine
+    FROM $BASE_IMAGE
+    RUN echo "base=$BASE_IMAGE" > /base.txt
+    SAVE IMAGE arg-from-test
+`)
+	// Use the default.
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/base.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "base=alpine\n", out)
+}
+
+func (s *EarthlySuite) TestArgInWorkdir(ctx context.Context, t *testctx.T) {
+	// ARG substitution inside WORKDIR.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    ARG APP_DIR=/workspace
+    FROM alpine
+    WORKDIR $APP_DIR
+    SAVE IMAGE arg-workdir-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	dir, err := ret.(*dagger.Container).Workdir(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "/workspace", dir)
+}
+
+func (s *EarthlySuite) TestArgInWorkdirOverride(ctx context.Context, t *testctx.T) {
+	// Caller overrides the WORKDIR ARG.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    ARG APP_DIR=/workspace
+    FROM alpine
+    WORKDIR $APP_DIR
+    SAVE IMAGE arg-workdir-override-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{"APP_DIR": "/app"})
+	require.NoError(t, err)
+
+	dir, err := ret.(*dagger.Container).Workdir(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "/app", dir)
+}
+
+func (s *EarthlySuite) TestArgInEnvValue(ctx context.Context, t *testctx.T) {
+	// ARG value substituted into ENV right-hand side.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    ARG VERSION=1.0.0
+    FROM alpine
+    ENV APP_VERSION=$VERSION
+    SAVE IMAGE arg-env-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).WithExec([]string{"sh", "-c", "echo $APP_VERSION"}).Stdout(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "1.0.0\n", out)
+}
+
+func (s *EarthlySuite) TestArgBraceSyntaxInRun(ctx context.Context, t *testctx.T) {
+	// Verify ${VAR} brace expansion works in RUN commands.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    ARG PREFIX=hello
+    FROM alpine
+    RUN echo "${PREFIX}_world" > /out.txt
+    SAVE IMAGE arg-brace-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "hello_world\n", out)
+}
+
+func (s *EarthlySuite) TestMultiArgPartialOverride(ctx context.Context, t *testctx.T) {
+	// Target with 3 ARGs: 1 required (must be supplied), 2 with defaults.
+	// Caller supplies only the required arg — the defaults should still apply.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    ARG --required NAME
+    ARG GREETING=Hello
+    ARG PUNCT=!
+    FROM alpine
+    RUN echo "$GREETING, $NAME$PUNCT" > /out.txt
+    SAVE IMAGE multi-arg-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{"NAME": "World"})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "Hello, World!\n", out)
+}
+
+func (s *EarthlySuite) TestArgOverrideWithDifferentValue(ctx context.Context, t *testctx.T) {
+	// Caller overrides one of multiple args while others keep defaults.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    ARG GREETING=Hello
+    ARG NAME=World
+    FROM alpine
+    RUN echo "$GREETING, $NAME!" > /out.txt
+    SAVE IMAGE multi-override-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{"GREETING": "Hi"})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "Hi, World!\n", out)
+}
+
+func (s *EarthlySuite) TestBaseTargetArgDefaultAppliesOnFromTarget(ctx context.Context, t *testctx.T) {
+	// FROM +base where base has ARG with default — the default must apply
+	// since copyFromTarget/cmdFrom passes empty args to the base build.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+base:
+    ARG LABEL=base-label
+    FROM alpine
+    RUN echo "$LABEL" > /label.txt
+
+app:
+    FROM +base
+    SAVE IMAGE from-target-arg-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("App"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/label.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "base-label\n", out)
+}
+
 // -- COPY from build context ----------------------------------------------
 
 func (s *EarthlySuite) TestCopyFile(ctx context.Context, t *testctx.T) {

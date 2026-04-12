@@ -41,3 +41,27 @@ func (suite *EarthfileSuite) TestParseArguments(ctx context.Context, t *testctx.
 		"C": {Name: "C", DefaultValue: "D=E", Required: false, Doc: ""},
 	}, earthfile.Targets["OptionalDefaultArg2"].Args)
 }
+
+func (suite *EarthfileSuite) TestParseArgDoc(ctx context.Context, t *testctx.T) {
+	ef, err := New(t.Context(), "testdata/args", "args")
+	require.NoError(t, err)
+
+	target := ef.Targets["DocumentedArg"]
+	require.NotNil(t, target)
+	arg, ok := target.Args["NAME"]
+	require.True(t, ok, "expected ARG NAME to be present")
+	require.Equal(t, "The name to greet.", arg.Doc)
+}
+
+func (suite *EarthfileSuite) TestParseMultipleArgs(ctx context.Context, t *testctx.T) {
+	ef, err := New(t.Context(), "testdata/args", "args")
+	require.NoError(t, err)
+
+	target := ef.Targets["MultiArg"]
+	require.NotNil(t, target)
+	require.Equal(t, map[string]ArgOpt{
+		"FOO": {Name: "FOO", DefaultValue: "", Required: true, Doc: ""},
+		"BAR": {Name: "BAR", DefaultValue: "default-bar", Required: false, Doc: ""},
+		"BAZ": {Name: "BAZ", DefaultValue: "", Required: false, Doc: ""},
+	}, target.Args)
+}

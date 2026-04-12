@@ -1,6 +1,8 @@
 package dagdag
 
 import (
+	"encoding/json"
+
 	"dagger.io/dagger"
 	"dagger.io/dagger/dag"
 	"github.com/iancoleman/strcase"
@@ -42,7 +44,8 @@ func ToFunction(target *earthfile.Target) *dagger.Function {
 		}
 
 		if argopt.DefaultValue != "" {
-			opts.DefaultValue = dagger.JSON(argopt.DefaultValue)
+			jsonBytes, _ := json.Marshal(argopt.DefaultValue)
+			opts.DefaultValue = dagger.JSON(jsonBytes)
 		}
 
 		fn = fn.WithArg(strcase.ToLowerCamel(name), kind, opts)

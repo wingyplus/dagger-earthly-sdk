@@ -4,3 +4,8 @@ args:
   ARG NAME
   ARG --required TAG
   ARG ARG_DEFAULT="default value"
+
+# Documented argument target.
+documented-args:
+  # The image name.
+  ARG IMAGE_NAME

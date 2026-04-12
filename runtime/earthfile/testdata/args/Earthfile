@@ -11,3 +11,14 @@ optional-default-arg:
 
 optional-default-arg-2:
   ARG C=D=E
+
+# This target has a documented ARG.
+documented-arg:
+  # The name to greet.
+  ARG NAME
+
+# Multiple ARGs in a single target.
+multi-arg:
+  ARG --required FOO
+  ARG BAR=default-bar
+  ARG BAZ
