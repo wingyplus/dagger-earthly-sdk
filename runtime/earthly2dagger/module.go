@@ -1,4 +1,4 @@
-package dagdag
+package earthly2dagger
 
 import (
 	"encoding/json"

@@ -11,7 +11,7 @@ import (
 	"dagger.io/dagger/dag"
 	"github.com/iancoleman/strcase"
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	"github.com/wingyplus/dagger-earthly-sdk/sdk/dagdag"
+	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthly2dagger"
 	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthfile"
 	"github.com/wingyplus/dagger-earthly-sdk/sdk/earthly"
 	"golang.org/x/net/context"
@@ -49,7 +49,7 @@ func invoke(ctx context.Context, ef *earthfile.Earthfile, parentName, fnName str
 	switch parentName {
 	// Register module
 	case "":
-		return dagdag.ToModule(ef), nil
+		return earthly2dagger.ToModule(ef), nil
 	case ef.ModuleName:
 		switch fnName {
 		// Constructor call
