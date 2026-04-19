@@ -492,6 +492,43 @@ app:
 	require.Equal(t, "artifact content\n", contents)
 }
 
+// -- EXPOSE ---------------------------------------------------------------
+
+func (s *EarthlySuite) TestExposePort(ctx context.Context, t *testctx.T) {
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    EXPOSE 80 443/tcp 53/udp
+    SAVE IMAGE expose-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr := ret.(*dagger.Container)
+	ports, err := ctr.ExposedPorts(ctx)
+	require.NoError(t, err)
+
+	type portProto struct {
+		port  int
+		proto dagger.NetworkProtocol
+	}
+	var got []portProto
+	for _, p := range ports {
+		num, err := p.Port(ctx)
+		require.NoError(t, err)
+		proto, err := p.Protocol(ctx)
+		require.NoError(t, err)
+		got = append(got, portProto{num, proto})
+	}
+
+	require.ElementsMatch(t, []portProto{
+		{80, dagger.NetworkProtocolTcp},
+		{443, dagger.NetworkProtocolTcp},
+		{53, dagger.NetworkProtocolUdp},
+	}, got)
+}
+
 // -- Error handling -------------------------------------------------------
 
 func (s *EarthlySuite) TestRunError(ctx context.Context, t *testctx.T) {

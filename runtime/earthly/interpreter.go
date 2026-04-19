@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"dagger.io/dagger"
@@ -136,7 +137,9 @@ func (i *Interpreter) evalCommand(ctx context.Context, ctr *dagger.Container, cm
 		// No-op during build walk. Artifact extraction happens via the
 		// returned container's Directory/File methods.
 		return ctr, nil
-	case "EXPOSE", "VOLUME", "SHELL", "STOPSIGNAL", "HEALTHCHECK":
+	case "EXPOSE":
+		return i.cmdExpose(ctr, cmd)
+	case "VOLUME", "SHELL", "STOPSIGNAL", "HEALTHCHECK":
 		// Unsupported metadata commands — silently skip.
 		return ctr, nil
 	default:
@@ -304,6 +307,33 @@ func (i *Interpreter) cmdLabel(ctr *dagger.Container, cmd *spec.Command, args ma
 			continue
 		}
 		ctr = ctr.WithLabel(k, expandArgs(v, args))
+	}
+	return ctr, nil
+}
+
+// cmdExpose handles the EXPOSE instruction.
+func (i *Interpreter) cmdExpose(ctr *dagger.Container, cmd *spec.Command) (*dagger.Container, error) {
+	if ctr == nil {
+		return nil, fmt.Errorf("EXPOSE before FROM")
+	}
+	for _, arg := range cmd.Args {
+		portStr, proto, hasProto := strings.Cut(arg, "/")
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("EXPOSE: invalid port %q: %w", portStr, err)
+		}
+		opts := dagger.ContainerWithExposedPortOpts{}
+		if hasProto {
+			switch strings.ToLower(proto) {
+			case "tcp":
+				opts.Protocol = dagger.NetworkProtocolTcp
+			case "udp":
+				opts.Protocol = dagger.NetworkProtocolUdp
+			default:
+				return nil, fmt.Errorf("EXPOSE: unsupported protocol %q", proto)
+			}
+		}
+		ctr = ctr.WithExposedPort(port, opts)
 	}
 	return ctr, nil
 }

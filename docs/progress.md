@@ -28,6 +28,7 @@ See [architecture.md](architecture.md) for an overview of how the SDK is structu
 | `SAVE IMAGE <name>`          | Implemented | Target returns `*dagger.Container` to the caller                                                        |
 | `SAVE IMAGE --push <name>`   | Implemented | Same as `SAVE IMAGE`; actual push deferred to caller                                                    |
 | `SAVE ARTIFACT <path>`       | Partial     | Path is recorded; artifact is accessible via the returned container — `AS LOCAL` export not implemented |
+| `EXPOSE <port>[/<proto>]`    | Implemented | Translates to `Container.WithExposedPort()`; supports `tcp` and `udp` protocols                        |
 
 ### Module schema generation
 
@@ -68,7 +69,7 @@ These commands are accepted but their effect is not applied. This is intentional
 
 | Command         | Why skipped                             | Notes                                                                          |
 | --------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
-| `EXPOSE <port>` | No Dagger equivalent for image metadata | Dagger exposes ports via `Container.WithExposedPort()` on services, not images |
+| `EXPOSE <port>` | Implemented via `WithExposedPort()` | See implemented instructions table above |
 | `VOLUME <path>` | No exact Dagger equivalent              | Could be approximated with `WithMountedTemp()`                                 |
 | `SHELL [...]`   | Interpreter state only                  | Would change the shell wrapper used for subsequent `RUN` commands              |
 | `STOPSIGNAL`    | No Dagger SDK API                       | OCI stop signal metadata not exposed in the Go SDK                             |
