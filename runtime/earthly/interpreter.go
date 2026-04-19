@@ -94,6 +94,8 @@ func (i *Interpreter) evalStatement(ctx context.Context, ctr *dagger.Container, 
 		return i.evalFor(ctx, ctr, stmt.For, args)
 	case stmt.Try != nil:
 		return i.evalTry(ctx, ctr, stmt.Try, args)
+	case stmt.Wait != nil:
+		return i.evalWait(ctx, ctr, stmt.Wait, args)
 	case stmt.With != nil:
 		// WITH DOCKER requires a Docker daemon — not supported in native mode.
 		return nil, fmt.Errorf("WITH DOCKER is not supported in native Dagger translation")
@@ -276,6 +278,30 @@ func (i *Interpreter) evalTry(ctx context.Context, ctr *dagger.Container, stmt *
 	if tryErr != nil {
 		return nil, tryErr
 	}
+	return ctr, nil
+}
+
+// evalWait implements WAIT ... END.
+//
+// All containers produced inside the block are materialised (synced) before
+// execution continues. In practice this means we evaluate the block and then
+// call Sync on the resulting container to force any pending lazy evaluations.
+func (i *Interpreter) evalWait(ctx context.Context, ctr *dagger.Container, stmt *spec.WaitStatement, args map[string]string) (*dagger.Container, error) {
+	if ctr == nil {
+		return nil, fmt.Errorf("WAIT before FROM")
+	}
+
+	ctr, err := i.evalBlock(ctx, ctr, stmt.Body, args)
+	if err != nil {
+		return nil, fmt.Errorf("WAIT block: %w", err)
+	}
+
+	// Force synchronous evaluation of the container produced by the block.
+	ctr, err = ctr.Sync(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("WAIT sync: %w", err)
+	}
+
 	return ctr, nil
 }
 

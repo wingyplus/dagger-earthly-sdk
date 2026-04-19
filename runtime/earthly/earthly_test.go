@@ -793,6 +793,42 @@ build:
 	require.Error(t, err)
 }
 
+// -- WAIT control flow ----------------------------------------------------
+
+func (s *EarthlySuite) TestWaitForcesSync(ctx context.Context, t *testctx.T) {
+	// Operations inside WAIT ... END are evaluated eagerly before continuing.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    WAIT
+        RUN echo "inside-wait" > /wait.txt
+    END
+    RUN echo "after-wait" >> /wait.txt
+    SAVE IMAGE wait-sync-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/wait.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "inside-wait\nafter-wait\n", out)
+}
+
+func (s *EarthlySuite) TestWaitErrorPropagates(ctx context.Context, t *testctx.T) {
+	// A failing command inside WAIT must propagate an error.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    WAIT
+        RUN exit 42
+    END
+`)
+	_, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.Error(t, err)
+}
+
 // -- Error handling -------------------------------------------------------
 
 func (s *EarthlySuite) TestRunError(ctx context.Context, t *testctx.T) {
