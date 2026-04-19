@@ -29,6 +29,10 @@ See [architecture.md](architecture.md) for an overview of how the SDK is structu
 | `SAVE IMAGE --push <name>`   | Implemented | Same as `SAVE IMAGE`; actual push deferred to caller                                                    |
 | `SAVE ARTIFACT <path>`       | Partial     | Path is recorded; artifact is accessible via the returned container — `AS LOCAL` export not implemented |
 | `EXPOSE <port>[/<proto>]`    | Implemented | Translates to `Container.WithExposedPort()`; supports `tcp` and `udp` protocols                        |
+| `IF ... ELSE IF ... ELSE ... END` | Implemented | Condition evaluated via `Container.WithExec().ExitCode(ctx)`; exit 0 is true; nested IF supported  |
+| `FOR VAR IN ... END`         | Implemented | List evaluated via `sh -c`/`Stdout(ctx)`, split on whitespace; body walked sequentially per item       |
+| `TRY ... CATCH ... FINALLY ... END` | Implemented | Try errors route to catch (starts from pre-try state); finally always runs                        |
+| `WAIT ... END`               | Implemented | Body evaluated, then `Sync(ctx)` called to force materialisation before continuing                     |
 
 ### Module schema generation
 
@@ -42,18 +46,6 @@ See [architecture.md](architecture.md) for an overview of how the SDK is structu
 | Target doc comment → function description          | Implemented | Leading `#` comments above a target are propagated           |
 
 ## What is not yet implemented
-
-### Control flow statements
-
-These Earthfile statement types exist in the AST (`spec.Statement`) but are silently skipped by the interpreter today.
-
-| Statement                   | Behaviour today                             | Path to implement                                                                                          |
-| --------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `IF ... END`                | Silently skipped; container state unchanged | Run the test expression with `Container.WithExec().ExitCode(ctx)`, then evaluate the matching branch block |
-| `ELSE IF` / `ELSE`          | Silently skipped                            | Part of the `IF` implementation above                                                                      |
-| `FOR x IN ... END`          | Silently skipped                            | Evaluate the list expression via `Stdout(ctx)`, split, and iterate sequentially                            |
-| `TRY ... CATCH ... FINALLY` | Silently skipped                            | Wrap the try-block evaluation in a Go error handler                                                        |
-| `WAIT ... END`              | Silently skipped                            | Force `Sync(ctx)` on all containers produced inside the block                                              |
 
 ### Commands that return an error
 

@@ -100,11 +100,11 @@ These ARGs are parsed but excluded from Dagger function parameters: all `EARTHLY
 
 ## Implementation Status
 
-**Implemented:** FROM, COPY, RUN (shell and exec forms), ARG, ENV, WORKDIR, USER, ENTRYPOINT, CMD, LABEL, EXPOSE, SAVE IMAGE, SAVE ARTIFACT (partial), `FROM +target` (recursive builds)
+**Implemented:** FROM, COPY, RUN (shell and exec forms), ARG, ENV, WORKDIR, USER, ENTRYPOINT, CMD, LABEL, EXPOSE, SAVE IMAGE, SAVE ARTIFACT (partial), `FROM +target` (recursive builds), `IF/ELSE IF/ELSE`, `FOR ... IN`, `TRY/CATCH/FINALLY`, `WAIT`
 
 **Returns error:** `WITH DOCKER ... END` (requires Docker daemon, incompatible with Dagger sandbox)
 
-**Silently skipped:** `IF`, `FOR`, `TRY/CATCH`, `WAIT`, `VOLUME`, `SHELL`, `STOPSIGNAL`, `HEALTHCHECK`
+**Silently skipped:** `VOLUME`, `SHELL`, `STOPSIGNAL`, `HEALTHCHECK`
 
 **Not yet implemented (returns error):** BUILD, FROM DOCKERFILE, GIT CLONE, DO, FUNCTION/COMMAND, IMPORT, LET/SET, CACHE, HOST, ADD, ONBUILD, LOAD, LOCALLY
 
