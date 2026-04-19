@@ -40,11 +40,10 @@ func ToModule(ef *earthfile.Earthfile) *dagger.Module {
 // Earthly built-in ARGs (EARTHLY_*, TARGETPLATFORM, etc.) are silently skipped
 // because their values are injected by the runtime, not supplied by users.
 func ToFunction(target *earthfile.Target, globals map[string]earthfile.ArgOpt) *dagger.Function {
-	returnType := dag.TypeDef().WithKind(dagger.TypeDefKindVoidKind)
-	_, hasOutput := target.Output()
-	if hasOutput {
-		returnType = dag.TypeDef().WithObject("Container")
-	}
+	// All targets return *dagger.Container — the final container state after
+	// executing the recipe. Targets with SAVE IMAGE return it as an image
+	// handle; targets without return the working container at end of execution.
+	returnType := dag.TypeDef().WithObject("Container")
 
 	fn := dag.Function(strcase.ToCamel(target.Name), returnType).WithDescription(target.Doc)
 

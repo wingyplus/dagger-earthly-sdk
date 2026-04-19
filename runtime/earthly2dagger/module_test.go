@@ -237,8 +237,8 @@ func (suite *ModuleSuite) TestArgAllStringKind(ctx context.Context, t *testctx.T
 	}
 }
 
-func (suite *ModuleSuite) TestReturnVoidType(ctx context.Context, t *testctx.T) {
-	t.Run("no SAVE IMAGE", func(ctx context.Context, t *testctx.T) {
+func (suite *ModuleSuite) TestReturnContainerTypeNoSaveImage(ctx context.Context, t *testctx.T) {
+	t.Run("no SAVE IMAGE returns Container", func(ctx context.Context, t *testctx.T) {
 		module := moduleFromPath(ctx, t, "../earthfile/testdata/simple", "simple")
 
 		objects, err := module.Objects(ctx)
@@ -247,8 +247,32 @@ func (suite *ModuleSuite) TestReturnVoidType(ctx context.Context, t *testctx.T) 
 		functions, err := objects[0].AsObject().Functions(ctx)
 		require.NoError(t, err)
 
-		assertTypeDef4(ctx, t, functions[0].ReturnType(), dagger.TypeDefKindVoidKind)
+		assertTypeDef5(ctx, t, functions[0].ReturnType(), dagger.TypeDefKindObjectKind, "Container")
 	})
+}
+
+// TestAllTargetsReturnContainerKind verifies that every function in a
+// multi-target Earthfile registers a Container return type regardless of
+// whether any target uses SAVE IMAGE.
+func (suite *ModuleSuite) TestAllTargetsReturnContainerKind(ctx context.Context, t *testctx.T) {
+	// testdata/to-module has two targets ("build" and "image-a"), neither of
+	// which has a SAVE IMAGE statement.
+	module := moduleFromPath(ctx, t, "testdata/to-module", "simple")
+
+	objects, err := module.Objects(ctx)
+	require.NoError(t, err)
+
+	functions, err := objects[0].AsObject().Functions(ctx)
+	require.NoError(t, err)
+	require.Len(t, functions, 2, "expected two functions from to-module testdata")
+
+	for _, fn := range functions {
+		name, err := fn.Name(ctx)
+		require.NoError(t, err)
+		t.Run(name, func(ctx context.Context, t *testctx.T) {
+			assertTypeDef5(ctx, t, fn.ReturnType(), dagger.TypeDefKindObjectKind, "Container")
+		})
+	}
 }
 
 func (suite *ModuleSuite) TestReturContainerType(ctx context.Context, t *testctx.T) {

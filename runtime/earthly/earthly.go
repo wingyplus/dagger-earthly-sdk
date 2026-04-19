@@ -19,8 +19,10 @@ type Earthly struct{}
 // New creates an Earthly executor.
 func New() *Earthly { return &Earthly{} }
 
-// Invoke builds a target natively via the Interpreter and returns either a
-// *dagger.Container (if the target has SAVE IMAGE) or nil on success.
+// Invoke builds a target natively via the Interpreter and returns the final
+// *dagger.Container state. All targets return a container: those with SAVE
+// IMAGE return it as an image handle; those without return the working
+// container at the end of recipe execution.
 func (m *Earthly) Invoke(
 	ctx context.Context,
 	source *dagger.Directory,
@@ -35,13 +37,14 @@ func (m *Earthly) Invoke(
 		return nil, err
 	}
 
-	if _, hasImage := target.Output(); hasImage {
-		return ctr, nil
+	// Sync forces eager evaluation of the pipeline so that runtime errors
+	// (e.g. a failing RUN) surface here rather than lazily in the caller.
+	ctr, err = ctr.Sync(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	// Void target — force evaluation so errors surface.
-	_, err = ctr.Sync(ctx)
-	return nil, err
+	return ctr, nil
 }
 
 // Source returns a Dagger Directory for the given host path, used as the

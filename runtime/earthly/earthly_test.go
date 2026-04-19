@@ -30,7 +30,89 @@ build:
 `)
 	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
 	require.NoError(t, err)
-	require.Nil(t, ret)
+	// Targets without SAVE IMAGE now return the final container state.
+	_, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return even without SAVE IMAGE")
+}
+
+func (s *EarthlySuite) TestFromOnly(ctx context.Context, t *testctx.T) {
+	// C1: A target with only a FROM instruction (no RUN, no SAVE IMAGE) must
+	// return a usable *dagger.Container pointing at the pulled image.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return for FROM-only target")
+
+	// Verify the container is functional — alpine ships with /etc/os-release.
+	out, err := ctr.WithExec([]string{"sh", "-c", "cat /etc/os-release"}).Stdout(ctx)
+	require.NoError(t, err)
+	require.Contains(t, out, "Alpine", "FROM-only container should be a valid alpine image")
+}
+
+func (s *EarthlySuite) TestNoSaveImageWorkdir(ctx context.Context, t *testctx.T) {
+	// A2: A target that ends with WORKDIR (no SAVE IMAGE) must return a
+	// container with the working directory correctly set.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    WORKDIR /myapp
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	dir, err := ctr.Workdir(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "/myapp", dir)
+}
+
+func (s *EarthlySuite) TestNoSaveImageEnv(ctx context.Context, t *testctx.T) {
+	// A3: A target that ends with ENV (no SAVE IMAGE) must return a container
+	// where the environment variable is visible to subsequent commands.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    ENV SERVICE=myservice
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	out, err := ctr.WithExec([]string{"sh", "-c", "echo $SERVICE"}).Stdout(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "myservice\n", out)
+}
+
+func (s *EarthlySuite) TestNoSaveImageUser(ctx context.Context, t *testctx.T) {
+	// A4: A target that ends with USER (no SAVE IMAGE) must return a container
+	// with the active user set to the specified user.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    USER nobody
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	user, err := ctr.User(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "nobody", user)
 }
 
 func (s *EarthlySuite) TestWorkdir(ctx context.Context, t *testctx.T) {
@@ -668,6 +750,77 @@ build:
 	require.Equal(t, "both\n", out)
 }
 
+func (s *EarthlySuite) TestNoSaveImageIfTakenBranch(ctx context.Context, t *testctx.T) {
+	// A5: Target with IF control flow (no SAVE IMAGE) — the container from the
+	// taken branch must be returned.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    IF [ "a" = "a" ]
+        RUN echo "if-branch" > /out.txt
+    ELSE
+        RUN echo "else-branch" > /out.txt
+    END
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	out, err := ctr.File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "if-branch\n", out)
+}
+
+func (s *EarthlySuite) TestNoSaveImageIfElseBranch(ctx context.Context, t *testctx.T) {
+	// A6: Target with IF/ELSE control flow (no SAVE IMAGE) — when the condition
+	// is false the ELSE branch container must be returned.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    IF [ "a" = "b" ]
+        RUN echo "if-branch" > /out.txt
+    ELSE
+        RUN echo "else-branch" > /out.txt
+    END
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	out, err := ctr.File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "else-branch\n", out)
+}
+
+func (s *EarthlySuite) TestNoSaveImageIfFalseNoElse(ctx context.Context, t *testctx.T) {
+	// A7: Target with IF, false condition, no ELSE (no SAVE IMAGE) — the
+	// pre-IF container state must be returned unchanged.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    RUN echo "before" > /out.txt
+    IF [ "a" = "b" ]
+        RUN echo "unreachable" > /out.txt
+    END
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	out, err := ctr.File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "before\n", out)
+}
+
 // -- FOR control flow -----------------------------------------------------
 
 func (s *EarthlySuite) TestForSingleItem(ctx context.Context, t *testctx.T) {
@@ -728,6 +881,28 @@ build:
 	require.Equal(t, "base\n", out)
 }
 
+func (s *EarthlySuite) TestNoSaveImageForLoop(ctx context.Context, t *testctx.T) {
+	// A8: Target with a FOR loop (no SAVE IMAGE) — the post-loop container
+	// state, accumulating all iterations, must be returned.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    FOR item IN x y z
+        RUN echo "$item" >> /items.txt
+    END
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	out, err := ctr.File("/items.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "x\ny\nz\n", out)
+}
+
 // -- TRY / CATCH / FINALLY control flow ----------------------------------
 
 func (s *EarthlySuite) TestTrySuccessPath(ctx context.Context, t *testctx.T) {
@@ -775,6 +950,30 @@ build:
 	require.Equal(t, "init\ncaught\nfinally\n", out)
 }
 
+func (s *EarthlySuite) TestNoSaveImageTryCatch(ctx context.Context, t *testctx.T) {
+	// A9: Target with TRY/CATCH (no SAVE IMAGE) — when the try body fails the
+	// catch body runs and the resulting container must be returned.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    TRY
+        RUN exit 1
+    CATCH
+        RUN echo "caught" > /out.txt
+    END
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	out, err := ctr.File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "caught\n", out)
+}
+
 func (s *EarthlySuite) TestTryFinallyAlwaysRuns(ctx context.Context, t *testctx.T) {
 	// Try fails, no catch, finally must still run (and final error propagates).
 	src, ef := sourceFromString(t, `VERSION 0.8
@@ -813,6 +1012,28 @@ build:
 	out, err := ret.(*dagger.Container).File("/wait.txt").Contents(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "inside-wait\nafter-wait\n", out)
+}
+
+func (s *EarthlySuite) TestNoSaveImageWait(ctx context.Context, t *testctx.T) {
+	// A10: Target with WAIT (no SAVE IMAGE) — the post-WAIT container state
+	// must be returned. WAIT forces synchronous evaluation before continuing.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    WAIT
+        RUN echo "inside" > /w.txt
+    END
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	ctr, ok := ret.(*dagger.Container)
+	require.True(t, ok, "expected *dagger.Container return")
+
+	out, err := ctr.File("/w.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "inside\n", out)
 }
 
 func (s *EarthlySuite) TestWaitErrorPropagates(ctx context.Context, t *testctx.T) {
