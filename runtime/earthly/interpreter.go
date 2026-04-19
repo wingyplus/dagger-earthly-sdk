@@ -92,6 +92,8 @@ func (i *Interpreter) evalStatement(ctx context.Context, ctr *dagger.Container, 
 		return i.evalIf(ctx, ctr, stmt.If, args)
 	case stmt.For != nil:
 		return i.evalFor(ctx, ctr, stmt.For, args)
+	case stmt.Try != nil:
+		return i.evalTry(ctx, ctr, stmt.Try, args)
 	case stmt.With != nil:
 		// WITH DOCKER requires a Docker daemon — not supported in native mode.
 		return nil, fmt.Errorf("WITH DOCKER is not supported in native Dagger translation")
@@ -224,6 +226,56 @@ func (i *Interpreter) evalFor(ctx context.Context, ctr *dagger.Container, stmt *
 		}
 	}
 
+	return ctr, nil
+}
+
+// evalTry implements TRY ... CATCH ... FINALLY ... END.
+//
+// The try body is evaluated first. If it returns an error, the catch body (if
+// present) is evaluated starting from the pre-try container state; its result
+// replaces the current container. The finally body (if present) is always
+// evaluated — regardless of whether the try or catch succeeded — and its
+// container state is propagated forward.
+func (i *Interpreter) evalTry(ctx context.Context, ctr *dagger.Container, stmt *spec.TryStatement, args map[string]string) (*dagger.Container, error) {
+	// Save the container state before the try block so the catch block can
+	// start from a known-good state if the try block fails.
+	preTryCtr := ctr
+
+	tryCtr, tryErr := i.evalBlock(ctx, ctr, stmt.TryBody, args)
+	if tryErr == nil {
+		// Try succeeded — use the post-try container going forward.
+		ctr = tryCtr
+	}
+
+	if tryErr != nil {
+		// On try failure the working container falls back to the pre-try state
+		// so that the catch / finally blocks have a valid base.
+		ctr = preTryCtr
+
+		if stmt.CatchBody != nil {
+			var catchErr error
+			ctr, catchErr = i.evalBlock(ctx, preTryCtr, *stmt.CatchBody, args)
+			if catchErr != nil {
+				// Propagate catch errors; finally still runs below.
+				tryErr = catchErr
+			} else {
+				tryErr = nil
+			}
+		}
+		// If there is no catch body, tryErr propagates after finally runs.
+	}
+
+	if stmt.FinallyBody != nil {
+		var finallyErr error
+		ctr, finallyErr = i.evalBlock(ctx, ctr, *stmt.FinallyBody, args)
+		if finallyErr != nil {
+			return nil, finallyErr
+		}
+	}
+
+	if tryErr != nil {
+		return nil, tryErr
+	}
 	return ctr, nil
 }
 

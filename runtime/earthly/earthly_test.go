@@ -728,6 +728,71 @@ build:
 	require.Equal(t, "base\n", out)
 }
 
+// -- TRY / CATCH / FINALLY control flow ----------------------------------
+
+func (s *EarthlySuite) TestTrySuccessPath(ctx context.Context, t *testctx.T) {
+	// Try body succeeds — catch should NOT run, finally SHOULD run.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    TRY
+        RUN echo "try-ok" > /result.txt
+    FINALLY
+        RUN echo "finally" >> /result.txt
+    END
+    SAVE IMAGE try-success-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/result.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "try-ok\nfinally\n", out)
+}
+
+func (s *EarthlySuite) TestTryFailureCatchRuns(ctx context.Context, t *testctx.T) {
+	// Try body fails — catch SHOULD run and recover; finally SHOULD run.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    RUN echo "init" > /result.txt
+    TRY
+        RUN exit 1
+    CATCH
+        RUN echo "caught" >> /result.txt
+    FINALLY
+        RUN echo "finally" >> /result.txt
+    END
+    SAVE IMAGE try-catch-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/result.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "init\ncaught\nfinally\n", out)
+}
+
+func (s *EarthlySuite) TestTryFinallyAlwaysRuns(ctx context.Context, t *testctx.T) {
+	// Try fails, no catch, finally must still run (and final error propagates).
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    TRY
+        RUN exit 1
+    FINALLY
+        RUN echo "cleanup" > /cleanup.txt
+    END
+    SAVE IMAGE try-finally-test
+`)
+	// The overall build should fail because try failed with no catch.
+	_, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.Error(t, err)
+}
+
 // -- Error handling -------------------------------------------------------
 
 func (s *EarthlySuite) TestRunError(ctx context.Context, t *testctx.T) {
