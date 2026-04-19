@@ -90,6 +90,8 @@ func (i *Interpreter) evalStatement(ctx context.Context, ctr *dagger.Container, 
 		return i.evalCommand(ctx, ctr, stmt.Command, args)
 	case stmt.If != nil:
 		return i.evalIf(ctx, ctr, stmt.If, args)
+	case stmt.For != nil:
+		return i.evalFor(ctx, ctr, stmt.For, args)
 	case stmt.With != nil:
 		// WITH DOCKER requires a Docker daemon — not supported in native mode.
 		return nil, fmt.Errorf("WITH DOCKER is not supported in native Dagger translation")
@@ -173,6 +175,56 @@ func (i *Interpreter) evalCondition(ctx context.Context, ctr *dagger.Container, 
 		return false, err
 	}
 	return exitCode == 0, nil
+}
+
+// evalFor implements FOR VAR IN <list-expr> ... END.
+//
+// The list expression (everything after IN) is run as a shell command inside
+// the current container; the stdout is split on whitespace to produce the
+// iteration items. The loop variable is injected into the args map for each
+// iteration, and the body block is evaluated sequentially.
+func (i *Interpreter) evalFor(ctx context.Context, ctr *dagger.Container, stmt *spec.ForStatement, args map[string]string) (*dagger.Container, error) {
+	if ctr == nil {
+		return nil, fmt.Errorf("FOR before FROM")
+	}
+
+	// Args format: ["VAR", "IN", ...list-items-or-expr...]
+	forArgs := stripFlags(stmt.Args)
+	if len(forArgs) < 3 {
+		return nil, fmt.Errorf("FOR: syntax error — expected 'FOR VAR IN ...'")
+	}
+	variable := forArgs[0]
+	if strings.ToUpper(forArgs[1]) != "IN" {
+		return nil, fmt.Errorf("FOR: expected IN, got %q", forArgs[1])
+	}
+	listTokens := forArgs[2:]
+
+	// Evaluate the list by running it as a shell command.
+	// Simple literal items (e.g. `FOR x IN a b c`) are also passed through sh
+	// so that both literal and computed forms work the same way.
+	c := withArgsAsEnv(ctr, args)
+	listExpr := expandArgs(strings.Join(listTokens, " "), args)
+	stdout, err := c.WithExec([]string{"sh", "-c", "echo " + listExpr}).Stdout(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("FOR: evaluating list expression: %w", err)
+	}
+	items := strings.Fields(stdout)
+
+	// Iterate: inject the loop variable into a copy of args and walk the body.
+	for _, item := range items {
+		iterArgs := make(map[string]string, len(args)+1)
+		for k, v := range args {
+			iterArgs[k] = v
+		}
+		iterArgs[variable] = item
+
+		ctr, err = i.evalBlock(ctx, ctr, stmt.Body, iterArgs)
+		if err != nil {
+			return nil, fmt.Errorf("FOR %s=%q: %w", variable, item, err)
+		}
+	}
+
+	return ctr, nil
 }
 
 func (i *Interpreter) evalCommand(ctx context.Context, ctr *dagger.Container, cmd *spec.Command, args map[string]string) (*dagger.Container, error) {

@@ -668,6 +668,66 @@ build:
 	require.Equal(t, "both\n", out)
 }
 
+// -- FOR control flow -----------------------------------------------------
+
+func (s *EarthlySuite) TestForSingleItem(ctx context.Context, t *testctx.T) {
+	// Loop over a single item — body executes once.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    FOR item IN one
+        RUN echo "$item" >> /items.txt
+    END
+    SAVE IMAGE for-single-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/items.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "one\n", out)
+}
+
+func (s *EarthlySuite) TestForMultipleItems(ctx context.Context, t *testctx.T) {
+	// Loop over multiple literal items.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    FOR item IN alpha beta gamma
+        RUN echo "$item" >> /items.txt
+    END
+    SAVE IMAGE for-multi-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/items.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "alpha\nbeta\ngamma\n", out)
+}
+
+func (s *EarthlySuite) TestForEmptyList(ctx context.Context, t *testctx.T) {
+	// Empty list expression — body never executes; container unchanged.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    RUN echo "base" > /out.txt
+    FOR item IN $(printf "")
+        RUN echo "$item" >> /out.txt
+    END
+    SAVE IMAGE for-empty-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "base\n", out)
+}
+
 // -- Error handling -------------------------------------------------------
 
 func (s *EarthlySuite) TestRunError(ctx context.Context, t *testctx.T) {
