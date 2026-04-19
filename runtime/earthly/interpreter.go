@@ -3,6 +3,7 @@ package earthly
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"strconv"
 	"strings"
@@ -62,9 +63,7 @@ func (i *Interpreter) Build(ctx context.Context, target *earthfile.Target, args 
 			resolved[name] = opt.DefaultValue
 		}
 	}
-	for k, v := range args {
-		resolved[k] = v
-	}
+	maps.Copy(resolved, args)
 
 	var ctr *dagger.Container
 	var err error
@@ -212,14 +211,12 @@ func (i *Interpreter) evalFor(ctx context.Context, ctr *dagger.Container, stmt *
 	if err != nil {
 		return nil, fmt.Errorf("FOR: evaluating list expression: %w", err)
 	}
-	items := strings.Fields(stdout)
+	items := strings.FieldsSeq(stdout)
 
 	// Iterate: inject the loop variable into a copy of args and walk the body.
-	for _, item := range items {
+	for item := range items {
 		iterArgs := make(map[string]string, len(args)+1)
-		for k, v := range args {
-			iterArgs[k] = v
-		}
+		maps.Copy(iterArgs, args)
 		iterArgs[variable] = item
 
 		ctr, err = i.evalBlock(ctx, ctr, stmt.Body, iterArgs)
@@ -359,8 +356,7 @@ func (i *Interpreter) cmdFrom(ctx context.Context, cmd *spec.Command, args map[s
 	image := expandArgs(cmd.Args[0], args)
 
 	// Cross-target FROM: `FROM +base`
-	if strings.HasPrefix(image, "+") {
-		targetName := strings.TrimPrefix(image, "+")
+	if targetName, ok := strings.CutPrefix(image, "+"); ok {
 		refTarget := i.lookupTarget(targetName)
 		if refTarget == nil {
 			return nil, fmt.Errorf("FROM: unknown local target %q", image)
