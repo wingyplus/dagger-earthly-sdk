@@ -304,17 +304,17 @@ build:
 }
 
 func (s *EarthlySuite) TestBaseTargetArgDefaultAppliesOnFromTarget(ctx context.Context, t *testctx.T) {
-	// FROM +base where base has ARG with default — the default must apply
+	// FROM +baseimage where baseimage has ARG with default — the default must apply
 	// since copyFromTarget/cmdFrom passes empty args to the base build.
 	src, ef := sourceFromString(t, `VERSION 0.8
 
-base:
+baseimage:
     ARG LABEL=base-label
     FROM alpine
     RUN echo "$LABEL" > /label.txt
 
 app:
-    FROM +base
+    FROM +baseimage
     SAVE IMAGE from-target-arg-test
 `)
 	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("App"), Args{})
@@ -448,12 +448,12 @@ build:
 func (s *EarthlySuite) TestFromTarget(ctx context.Context, t *testctx.T) {
 	src, ef := sourceFromString(t, `VERSION 0.8
 
-base:
+baseimage:
     FROM alpine
     RUN echo 'base layer' > /base.txt
 
 app:
-    FROM +base
+    FROM +baseimage
     RUN echo 'app layer' > /app.txt
     SAVE IMAGE from-target-test
 `)
@@ -476,7 +476,7 @@ func (s *EarthlySuite) TestCopyFromTarget(ctx context.Context, t *testctx.T) {
 
 builder:
     FROM alpine
-    RUN echo 'artifact content' > /out/result.txt
+    RUN mkdir -p /out && echo 'artifact content' > /out/result.txt
     SAVE ARTIFACT /out/result.txt
 
 app:

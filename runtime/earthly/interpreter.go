@@ -242,6 +242,11 @@ func (i *Interpreter) evalTry(ctx context.Context, ctr *dagger.Container, stmt *
 
 	tryCtr, tryErr := i.evalBlock(ctx, ctr, stmt.TryBody, args)
 	if tryErr == nil {
+		// Force evaluation of the try block so that runtime errors (e.g. exit 1)
+		// are detected now rather than lazily when the caller reads the result.
+		tryCtr, tryErr = tryCtr.Sync(ctx)
+	}
+	if tryErr == nil {
 		// Try succeeded — use the post-try container going forward.
 		ctr = tryCtr
 	}
@@ -254,6 +259,10 @@ func (i *Interpreter) evalTry(ctx context.Context, ctr *dagger.Container, stmt *
 		if stmt.CatchBody != nil {
 			var catchErr error
 			ctr, catchErr = i.evalBlock(ctx, preTryCtr, *stmt.CatchBody, args)
+			if catchErr == nil {
+				// Force evaluation so catch-block runtime errors surface now.
+				ctr, catchErr = ctr.Sync(ctx)
+			}
 			if catchErr != nil {
 				// Propagate catch errors; finally still runs below.
 				tryErr = catchErr
@@ -267,6 +276,10 @@ func (i *Interpreter) evalTry(ctx context.Context, ctr *dagger.Container, stmt *
 	if stmt.FinallyBody != nil {
 		var finallyErr error
 		ctr, finallyErr = i.evalBlock(ctx, ctr, *stmt.FinallyBody, args)
+		if finallyErr == nil {
+			// Force evaluation of finally block.
+			ctr, finallyErr = ctr.Sync(ctx)
+		}
 		if finallyErr != nil {
 			return nil, finallyErr
 		}
@@ -497,15 +510,18 @@ func (i *Interpreter) cmdUser(ctr *dagger.Container, cmd *spec.Command, args map
 }
 
 // cmdLabel handles the LABEL instruction.
+//
+// The Earthly AST tokenizes `LABEL key=value` as ["key", "=", "value"], so we
+// parse the args slice as a sequence of key/value pairs using parseKVPairs.
 func (i *Interpreter) cmdLabel(ctr *dagger.Container, cmd *spec.Command, args map[string]string) (*dagger.Container, error) {
 	if ctr == nil {
 		return ctr, nil
 	}
-	for _, arg := range cmd.Args {
-		k, v, ok := strings.Cut(arg, "=")
-		if !ok {
-			continue
-		}
+	pairs, err := parseKVPairs(cmd.Args)
+	if err != nil {
+		return nil, fmt.Errorf("LABEL: %w", err)
+	}
+	for k, v := range pairs {
 		ctr = ctr.WithLabel(k, expandArgs(v, args))
 	}
 	return ctr, nil
@@ -566,7 +582,10 @@ func expandArgs(s string, args map[string]string) string {
 	})
 }
 
-// parseKV parses `KEY=VALUE` or `KEY VALUE` forms used by ENV.
+// parseKV parses ENV/ARG key-value pairs in three forms the Earthly AST emits:
+//   - ["KEY=VALUE"]         — single token with embedded equals
+//   - ["KEY", "=", "VALUE"] — three tokens (earthly parser splits on =)
+//   - ["KEY", "VALUE"]      — space-separated (legacy shell form)
 func parseKV(xs []string) (string, string, error) {
 	if len(xs) == 0 {
 		return "", "", fmt.Errorf("missing key")
@@ -578,8 +597,45 @@ func parseKV(xs []string) (string, string, error) {
 		}
 		return k, v, nil
 	}
-	// `ENV KEY VALUE` form
+	// Three-token form: ["KEY", "=", "VALUE", ...] emitted by earthly AST parser.
+	if len(xs) >= 3 && xs[1] == "=" {
+		return xs[0], strings.Join(xs[2:], " "), nil
+	}
+	// Two-token space-separated form: `ENV KEY VALUE`.
 	return xs[0], strings.Join(xs[1:], " "), nil
+}
+
+// parseKVPairs parses a sequence of key-value pairs from an args slice as emitted
+// by the Earthly AST. Multiple pairs can appear in one instruction (e.g., LABEL).
+// Supported token forms per pair:
+//   - "key=value"    — single token with embedded equals
+//   - "key", "=", "value" — three tokens (earthly parser splits on =)
+func parseKVPairs(xs []string) (map[string]string, error) {
+	result := map[string]string{}
+	i := 0
+	for i < len(xs) {
+		key := xs[i]
+		i++
+
+		// Check for embedded equals: "key=value"
+		if k, v, ok := strings.Cut(key, "="); ok {
+			result[k] = v
+			continue
+		}
+
+		// Expect "=" as next token.
+		if i >= len(xs) || xs[i] != "=" {
+			return nil, fmt.Errorf("expected '=' after key %q", key)
+		}
+		i++ // consume "="
+
+		if i >= len(xs) {
+			return nil, fmt.Errorf("missing value for key %q", key)
+		}
+		result[key] = xs[i]
+		i++
+	}
+	return result, nil
 }
 
 // looksLikeDir returns true when the path looks like a directory reference.

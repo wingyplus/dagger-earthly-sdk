@@ -74,10 +74,11 @@ type ArgOpt struct {
 }
 
 type Target struct {
-	Name string
-	Doc  string
-	Args map[string]ArgOpt
-	Ast  spec.Target
+	Name     string
+	Doc      string
+	Args     map[string]ArgOpt
+	ArgOrder []string // declaration order of ARG names
+	Ast      spec.Target
 	// TODO: sourcemap
 }
 
@@ -92,13 +93,19 @@ func (t *Target) Output() (string, bool) {
 
 		if stmt := statement.If; stmt != nil {
 			for _, statement := range stmt.IfBody {
-				if out, found := saveImageOutput(statement.Command); found {
-					return out, found
+				if statement.Command != nil {
+					if out, found := saveImageOutput(statement.Command); found {
+						return out, found
+					}
 				}
 			}
-			for _, statement := range *stmt.ElseBody {
-				if out, found := saveImageOutput(statement.Command); found {
-					return out, found
+			if stmt.ElseBody != nil {
+				for _, statement := range *stmt.ElseBody {
+					if statement.Command != nil {
+						if out, found := saveImageOutput(statement.Command); found {
+							return out, found
+						}
+					}
 				}
 			}
 		}
@@ -108,6 +115,11 @@ func (t *Target) Output() (string, bool) {
 
 func saveImageOutput(cmd *spec.Command) (string, bool) {
 	if cmd.Name == "SAVE IMAGE" {
+		// SAVE IMAGE with no arguments is valid Earthly syntax — the image is
+		// saved without an explicit tag. Treat it as a container-returning target.
+		if len(cmd.Args) == 0 {
+			return "", true
+		}
 		if cmd.Args[0] == "--push" {
 			return cmd.Args[1], true
 		}
@@ -128,6 +140,9 @@ func parseTarget(ast spec.Target) *Target {
 			if cmd.Name == "ARG" {
 				arg := parseArg(cmd.Args)
 				arg.Doc = strings.TrimSpace(cmd.Docs)
+				if _, exists := target.Args[arg.Name]; !exists {
+					target.ArgOrder = append(target.ArgOrder, arg.Name)
+				}
 				target.Args[arg.Name] = arg
 			}
 		}
@@ -170,7 +185,7 @@ func parseArg(arg []string) (opt ArgOpt) {
 	opt.Name = arg[0]
 	// Tokens: name "=" value  →  len == 3, value at index 2.
 	if len(arg) > 2 {
-		opt.DefaultValue = arg[2]
+		opt.DefaultValue = strings.Trim(arg[2], `"`)
 	}
 	return
 }

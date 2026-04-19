@@ -2,6 +2,7 @@ package earthly2dagger
 
 import (
 	"encoding/json"
+	"sort"
 
 	"dagger.io/dagger"
 	"dagger.io/dagger/dag"
@@ -19,8 +20,13 @@ func ToModule(ef *earthfile.Earthfile) *dagger.Module {
 			dag.Function("New", dag.TypeDef().WithObject(ef.ModuleName)),
 		)
 
-	for _, target := range ef.Targets {
-		module = module.WithFunction(ToFunction(target, ef.GlobalArgs))
+	names := make([]string, 0, len(ef.Targets))
+	for name := range ef.Targets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		module = module.WithFunction(ToFunction(ef.Targets[name], ef.GlobalArgs))
 	}
 
 	return dag.Module().WithObject(module)
@@ -57,10 +63,11 @@ func ToFunction(target *earthfile.Target, globals map[string]earthfile.ArgOpt) *
 		fn = fn.WithArg(strcase.ToLowerCamel(name), kind, opts)
 	}
 
-	for name, argopt := range target.Args {
+	for _, name := range target.ArgOrder {
 		if earthfile.IsBuiltinArg(name) {
 			continue
 		}
+		argopt := target.Args[name]
 		kind := dag.TypeDef().WithKind(dagger.TypeDefKindStringKind)
 		opts := dagger.FunctionWithArgOpts{Description: argopt.Doc}
 
