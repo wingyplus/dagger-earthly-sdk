@@ -529,6 +529,145 @@ build:
 	}, got)
 }
 
+// -- IF control flow ------------------------------------------------------
+
+func (s *EarthlySuite) TestIfTrueBranch(ctx context.Context, t *testctx.T) {
+	// Condition is true (exit 0) — the if-body should run.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    IF [ "true" = "true" ]
+        RUN echo "true-branch" > /branch.txt
+    ELSE
+        RUN echo "false-branch" > /branch.txt
+    END
+    SAVE IMAGE if-true-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/branch.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "true-branch\n", out)
+}
+
+func (s *EarthlySuite) TestIfFalseBranch(ctx context.Context, t *testctx.T) {
+	// Condition is false (exit 1) — the else-body should run.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    IF [ "true" = "false" ]
+        RUN echo "true-branch" > /branch.txt
+    ELSE
+        RUN echo "false-branch" > /branch.txt
+    END
+    SAVE IMAGE if-false-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/branch.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "false-branch\n", out)
+}
+
+func (s *EarthlySuite) TestIfElseIfBranch(ctx context.Context, t *testctx.T) {
+	// Primary condition is false; else-if condition is true.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    ARG VALUE=b
+    IF [ "$VALUE" = "a" ]
+        RUN echo "branch-a" > /branch.txt
+    ELSE IF [ "$VALUE" = "b" ]
+        RUN echo "branch-b" > /branch.txt
+    ELSE
+        RUN echo "branch-other" > /branch.txt
+    END
+    SAVE IMAGE if-elseif-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/branch.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "branch-b\n", out)
+}
+
+func (s *EarthlySuite) TestIfNoMatchFallsToElse(ctx context.Context, t *testctx.T) {
+	// Neither if nor else-if matches; else body runs.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    ARG VALUE=z
+    IF [ "$VALUE" = "a" ]
+        RUN echo "branch-a" > /branch.txt
+    ELSE IF [ "$VALUE" = "b" ]
+        RUN echo "branch-b" > /branch.txt
+    ELSE
+        RUN echo "branch-other" > /branch.txt
+    END
+    SAVE IMAGE if-else-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/branch.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "branch-other\n", out)
+}
+
+func (s *EarthlySuite) TestIfNoElseBodyOnFalse(ctx context.Context, t *testctx.T) {
+	// Condition is false and there is no ELSE — container state unchanged.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    RUN echo "before" > /out.txt
+    IF [ "a" = "b" ]
+        RUN echo "inside-if" > /out.txt
+    END
+    SAVE IMAGE if-no-else-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "before\n", out)
+}
+
+func (s *EarthlySuite) TestIfNestedBlocks(ctx context.Context, t *testctx.T) {
+	// Nested IF inside IF body.
+	src, ef := sourceFromString(t, `VERSION 0.8
+
+build:
+    FROM alpine
+    ARG OUTER=yes
+    ARG INNER=yes
+    IF [ "$OUTER" = "yes" ]
+        IF [ "$INNER" = "yes" ]
+            RUN echo "both" > /out.txt
+        ELSE
+            RUN echo "outer-only" > /out.txt
+        END
+    ELSE
+        RUN echo "neither" > /out.txt
+    END
+    SAVE IMAGE if-nested-test
+`)
+	ret, err := New().Invoke(ctx, src, ef, ef.TargetFromFunctionName("Build"), Args{})
+	require.NoError(t, err)
+
+	out, err := ret.(*dagger.Container).File("/out.txt").Contents(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "both\n", out)
+}
+
 // -- Error handling -------------------------------------------------------
 
 func (s *EarthlySuite) TestRunError(ctx context.Context, t *testctx.T) {

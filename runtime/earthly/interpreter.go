@@ -89,16 +89,90 @@ func (i *Interpreter) evalStatement(ctx context.Context, ctr *dagger.Container, 
 	case stmt.Command != nil:
 		return i.evalCommand(ctx, ctr, stmt.Command, args)
 	case stmt.If != nil:
-		// IF requires runtime evaluation — skip both branches for now.
-		// The current container state is returned unchanged.
-		// TODO: implement via ctr.WithExec(expr).ExitCode(ctx) branch selection.
-		return ctr, nil
+		return i.evalIf(ctx, ctr, stmt.If, args)
 	case stmt.With != nil:
 		// WITH DOCKER requires a Docker daemon — not supported in native mode.
 		return nil, fmt.Errorf("WITH DOCKER is not supported in native Dagger translation")
 	default:
 		return ctr, nil
 	}
+}
+
+// evalBlock walks a slice of statements sequentially, threading container state.
+func (i *Interpreter) evalBlock(ctx context.Context, ctr *dagger.Container, block spec.Block, args map[string]string) (*dagger.Container, error) {
+	var err error
+	for _, stmt := range block {
+		ctr, err = i.evalStatement(ctx, ctr, stmt, args)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ctr, nil
+}
+
+// evalIf implements IF ... ELSE IF ... ELSE ... END.
+//
+// The condition expression is run as a shell command inside the current
+// container; an exit code of 0 means the condition is true. The matching
+// branch body is then evaluated and its resulting container state is returned.
+func (i *Interpreter) evalIf(ctx context.Context, ctr *dagger.Container, stmt *spec.IfStatement, args map[string]string) (*dagger.Container, error) {
+	if ctr == nil {
+		return nil, fmt.Errorf("IF before FROM")
+	}
+
+	taken, err := i.evalCondition(ctx, ctr, stmt.Expression, stmt.ExecMode, args)
+	if err != nil {
+		return nil, fmt.Errorf("IF condition: %w", err)
+	}
+	if taken {
+		return i.evalBlock(ctx, ctr, stmt.IfBody, args)
+	}
+
+	for _, elseIf := range stmt.ElseIf {
+		taken, err = i.evalCondition(ctx, ctr, elseIf.Expression, elseIf.ExecMode, args)
+		if err != nil {
+			return nil, fmt.Errorf("ELSE IF condition: %w", err)
+		}
+		if taken {
+			return i.evalBlock(ctx, ctr, elseIf.Body, args)
+		}
+	}
+
+	if stmt.ElseBody != nil {
+		return i.evalBlock(ctx, ctr, *stmt.ElseBody, args)
+	}
+
+	return ctr, nil
+}
+
+// evalCondition runs the condition expression in the container and returns
+// true if the exit code is 0. The expression slice is joined and executed via
+// sh -c (shell mode) or used directly as argv (exec mode).
+func (i *Interpreter) evalCondition(ctx context.Context, ctr *dagger.Container, expression []string, execMode bool, args map[string]string) (bool, error) {
+	raw := stripFlags(expression)
+	if len(raw) == 0 {
+		return false, fmt.Errorf("empty IF expression")
+	}
+
+	c := withArgsAsEnv(ctr, args)
+
+	var execArgs []string
+	if execMode {
+		for _, a := range raw {
+			execArgs = append(execArgs, expandArgs(a, args))
+		}
+	} else {
+		script := expandArgs(strings.Join(raw, " "), args)
+		execArgs = []string{"sh", "-c", script}
+	}
+
+	exitCode, err := c.WithExec(execArgs, dagger.ContainerWithExecOpts{
+		Expect: dagger.ReturnTypeAny,
+	}).ExitCode(ctx)
+	if err != nil {
+		return false, err
+	}
+	return exitCode == 0, nil
 }
 
 func (i *Interpreter) evalCommand(ctx context.Context, ctr *dagger.Container, cmd *spec.Command, args map[string]string) (*dagger.Container, error) {
